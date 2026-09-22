@@ -59,187 +59,55 @@
   })(FeatureType || (FeatureType = {}));
 
   /**
-   * Shared flat-coordinate geometry for the replay map.
-   * The renderer, river topology, borders, picking, and map fitting all use
-   * these helpers so a plot has one stable location everywhere.
+   * enum-names.ts
+   * Utility functions to convert enum values to display names
+   * Used primarily for UI rendering and debugging
    */
-  // Pointy hex dimensions in world coordinates. A radius of one keeps fitting
-  // and picking independent from the viewport's current pixel scale.
-  const hexRadius = 1;
-  const hexWidth = Math.sqrt(3) * hexRadius;
-  const hexRowSpacing = 1.5 * hexRadius;
-  const directions = ['NE', 'E', 'SE', 'SW', 'W', 'NW'];
   /**
-   * Return the opposite side of a shared hex edge.
+   * Convert ElevationType enum to display name
    */
-  function oppositeDirection(direction) {
-      return directions[(directions.indexOf(direction) + 3) % directions.length];
-  }
-  /**
-   * Build a stable key for a tile coordinate.
-   */
-  function tileKey(tile) {
-      return `${tile.x},${tile.y}`;
-  }
-  /**
-   * Return the center of a pointy hex in the flat shared map coordinate system.
-   */
-  function hexCenter(tile) {
-      return {
-          x: (tile.x + (tile.y % 2 === 0 ? 0 : 0.5)) * hexWidth,
-          y: tile.y * hexRowSpacing
-      };
-  }
-  /**
-   * Return the six vertices of a pointy hex, beginning at its top point.
-   */
-  function hexCorners(tile) {
-      const center = hexCenter(tile);
-      return Array.from({ length: 6 }, (_, index) => {
-          const angle = Math.PI / 2 - index * Math.PI / 3;
-          return {
-              x: center.x + Math.cos(angle) * hexRadius,
-              y: center.y + Math.sin(angle) * hexRadius
-          };
-      });
-  }
-  /**
-   * Return the two corners that make up a direction's outward edge.
-   */
-  function edgeCorners(tile, direction) {
-      const corners = hexCorners(tile);
-      const edgeIndex = directions.indexOf(direction);
-      return [corners[edgeIndex], corners[(edgeIndex + 1) % corners.length]];
-  }
-  /**
-   * Offset both endpoints of an edge toward a hex center by a world distance.
-   * Borders and highlight outlines use this to keep every stroke inside its
-   * own hexagon, leaving the shared edge itself free for the feature that
-   * belongs to both sides, such as a river.
-   */
-  function insetEdgeToward(points, center, distance) {
-      const midpoint = { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 };
-      const length = Math.hypot(center.x - midpoint.x, center.y - midpoint.y) || 1;
-      const x = (center.x - midpoint.x) / length * distance;
-      const y = (center.y - midpoint.y) / length * distance;
-      return [
-          { x: points[0].x + x, y: points[0].y + y },
-          { x: points[1].x + x, y: points[1].y + y }
-      ];
-  }
-  /**
-   * Look up a neighbor using the map's staggered rows and optional horizontal wrap.
-   */
-  function neighborFor(tile, direction, options) {
-      const oddRow = tile.y % 2 !== 0;
-      const offsets = oddRow
-          ? { NE: [1, 1], E: [1, 0], SE: [1, -1], SW: [0, -1], W: [-1, 0], NW: [0, 1] }
-          : { NE: [0, 1], E: [1, 0], SE: [0, -1], SW: [-1, -1], W: [-1, 0], NW: [-1, 1] };
-      let x = tile.x + offsets[direction][0];
-      const y = tile.y + offsets[direction][1];
-      if (y < 0 || y >= options.height || options.width <= 0) {
-          return null;
+  function getElevationName(elevation) {
+      switch (elevation) {
+          case ElevationType.Mountain: return 'Mountain';
+          case ElevationType.Hills: return 'Hills';
+          case ElevationType.AboveSeaLevel: return 'Above Sea Level';
+          case ElevationType.BelowSeaLevel: return 'Below Sea Level';
+          default: return `Unknown Elevation ${elevation}`;
       }
-      if (x < 0 || x >= options.width) {
-          if (!options.wrapX) {
-              return null;
-          }
-          x = (x + options.width) % options.width;
-      }
-      return { x, y };
   }
   /**
-   * Build the canonical key for an edge, including wrapped seam neighbors.
+   * Convert TileType enum to display name
    */
-  function sharedEdgeKey(tile, direction, options) {
-      const neighbor = neighborFor(tile, direction, options);
-      if (!neighbor) {
-          return `${tileKey(tile)}:${direction}`;
+  function getTileTypeName(type) {
+      switch (type) {
+          case TileType.Grassland: return 'Grassland';
+          case TileType.Plains: return 'Plains';
+          case TileType.Desert: return 'Desert';
+          case TileType.Tundra: return 'Tundra';
+          case TileType.Snow: return 'Snow';
+          case TileType.Coast: return 'Coast';
+          case TileType.Ocean: return 'Ocean';
+          default: return `Unknown Tile ${type}`;
       }
-      return [tileKey(tile), tileKey(neighbor)].sort().join('|');
   }
   /**
-   * Deduplicate parsed river ids into drawable shared edges. Edges that touch
-   * a water plot are dropped: the save encodes every lake shoreline as river
-   * records with the lake's own river id, and one-tile lakes neighbor only
-   * land, so the only reliable lake marker is water terrain on either side.
+   * Convert FeatureType enum to display name
    */
-  function buildRiverEdges(tiles, options) {
-      /** Check whether a plot is coast, ocean, or a lake stored as coast. */
-      const isWater = (tile) => tile.type === TileType.Coast || tile.type === TileType.Ocean;
-      const edges = new Map();
-      for (let y = 0; y < tiles.length; y++) {
-          for (let x = 0; x < tiles[y].length; x++) {
-              const tileData = tiles[y][x];
-              const rivers = tileData.rivers || [];
-              for (let index = 0; index < directions.length; index++) {
-                  const riverId = rivers[index];
-                  if (riverId === undefined || riverId < 0) {
-                      continue;
-                  }
-                  const tile = { x, y };
-                  const direction = directions[index];
-                  const neighbor = neighborFor(tile, direction, options);
-                  if (isWater(tileData) || (neighbor && isWater(tiles[neighbor.y][neighbor.x]))) {
-                      continue;
-                  }
-                  const key = sharedEdgeKey(tile, direction, options);
-                  if (edges.has(key)) {
-                      continue;
-                  }
-                  const edge = { key, direction, tile, neighbor, riverId, points: edgeCorners(tile, direction) };
-                  if (neighbor && Math.abs(neighbor.x - tile.x) > 1) {
-                      edge.seamPoints = edgeCorners(neighbor, oppositeDirection(direction));
-                  }
-                  edges.set(key, edge);
-              }
-          }
+  function getFeatureName(feature) {
+      switch (feature) {
+          case FeatureType.NoFeature: return 'None';
+          case FeatureType.Ice: return 'Ice';
+          case FeatureType.Jungle: return 'Jungle';
+          case FeatureType.Marsh: return 'Marsh';
+          case FeatureType.Oasis: return 'Oasis';
+          case FeatureType.FloodPlains: return 'Flood Plains';
+          case FeatureType.Forest: return 'Forest';
+          case FeatureType.CerroDePotosi: return 'Cerro de Potosi';
+          case FeatureType.Atoll: return 'Atoll';
+          case FeatureType.SriPada: return 'Sri Pada';
+          case FeatureType.MtSinai: return 'Mt. Sinai';
+          default: return `Unknown Feature ${feature}`;
       }
-      return Array.from(edges.values());
-  }
-  /**
-   * Map a world point to the nearest staggered tile, then verify it is inside
-   * the actual hex so gaps around corners do not select a neighboring plot.
-   */
-  function pickHex(point, options) {
-      const estimatedY = Math.round(point.y / hexRowSpacing);
-      for (let y = estimatedY - 1; y <= estimatedY + 1; y++) {
-          if (y < 0 || y >= options.height) {
-              continue;
-          }
-          const rowOffset = y % 2 === 0 ? 0 : 0.5;
-          const estimatedX = Math.round(point.x / hexWidth - rowOffset);
-          for (let x = estimatedX - 1; x <= estimatedX + 1; x++) {
-              if (x < 0 || x >= options.width) {
-                  continue;
-              }
-              const center = hexCenter({ x, y });
-              const dx = Math.abs(point.x - center.x);
-              const dy = Math.abs(point.y - center.y);
-              const horizontalLimit = Math.min(hexWidth / 2, Math.sqrt(3) * (hexRadius - dy));
-              if (dx <= horizontalLimit && dy <= hexRadius) {
-                  return { x, y };
-              }
-          }
-      }
-      return null;
-  }
-  /**
-   * Select a stable LOD, using 15 percent hysteresis after the first choice.
-   */
-  function nextMapLod(hexWidthPixels, previous) {
-      if (!previous) {
-          return hexWidthPixels < 10 ? 'world' : hexWidthPixels < 28 ? 'regional' : 'local';
-      }
-      if (previous === 'world') {
-          return hexWidthPixels > 32.2 ? 'local' : hexWidthPixels > 11.5 ? 'regional' : 'world';
-      }
-      if (previous === 'regional') {
-          if (hexWidthPixels < 8.5)
-              return 'world';
-          return hexWidthPixels > 32.2 ? 'local' : 'regional';
-      }
-      return hexWidthPixels < 8.5 ? 'world' : hexWidthPixels < 23.8 ? 'regional' : 'local';
   }
 
   /**
@@ -430,6 +298,310 @@
    */
   function getCivColors(civName) {
       return CivColors[civName] || null;
+  }
+
+  /**
+   * tile-tooltip.ts
+   * The small hover card that describes the map plot under the cursor.
+   * It shows the plot coordinates, the owner and city at the current
+   * turn (skipped on unowned land), the model or player identity the
+   * link supplied for that owner (skipped when none was provided),
+   * and a dot-joined terrain summary.
+   */
+  /** Cursor offset used when placing the card, and the gap kept from the edges. */
+  const cursorOffset = 14;
+  const edgeGap = 6;
+  /**
+   * Floating card owned by the map container, driven by ReplayMap hover events.
+   */
+  class TileTooltip {
+      /** Build the text lines inside a positioned map container. */
+      constructor(container) {
+          this.info = null;
+          this.annotation = null;
+          this.element = document.createElement('div');
+          this.element.className = 'tile-tooltip';
+          this.element.hidden = true;
+          this.coordsLine = document.createElement('div');
+          this.coordsLine.className = 'tt-coords';
+          this.ownerLine = document.createElement('div');
+          this.ownerLine.className = 'tt-owner';
+          this.modelLine = document.createElement('div');
+          this.modelLine.className = 'tt-model';
+          this.terrainLine = document.createElement('div');
+          this.terrainLine.className = 'tt-terrain';
+          this.element.append(this.coordsLine, this.ownerLine, this.modelLine, this.terrainLine);
+          container.appendChild(this.element);
+      }
+      /** Whether the card is currently shown for some plot. */
+      get visible() {
+          return !this.element.hidden;
+      }
+      /** Point the card at a new plot, replacing terrain and ownership text. */
+      setTile(x, y, tile, info, annotation = null) {
+          this.info = info;
+          this.annotation = annotation;
+          this.coordsLine.textContent = `X: ${x}, Y: ${y}`;
+          this.renderOwner();
+          this.renderModel();
+          this.terrainLine.textContent = this.terrainText(tile);
+          this.element.hidden = false;
+      }
+      /** Re-read ownership after the hovered turn changed during playback. */
+      setInfo(info, annotation = null) {
+          if (!this.visible)
+              return;
+          this.info = info;
+          this.annotation = annotation;
+          this.renderOwner();
+          this.renderModel();
+      }
+      /** Place the card beside the cursor, flipping near the container edges. */
+      moveTo(point) {
+          const parent = this.element.parentElement;
+          let left = point.x + cursorOffset;
+          let top = point.y + cursorOffset;
+          if (parent) {
+              if (left + this.element.offsetWidth > parent.clientWidth - edgeGap)
+                  left = point.x - this.element.offsetWidth - cursorOffset;
+              if (top + this.element.offsetHeight > parent.clientHeight - edgeGap)
+                  top = point.y - this.element.offsetHeight - cursorOffset;
+          }
+          this.element.style.left = `${Math.max(edgeGap, left)}px`;
+          this.element.style.top = `${Math.max(edgeGap, top)}px`;
+      }
+      /** Take the card away, e.g. while dragging, zooming, or on mouseout. */
+      hide() {
+          this.element.hidden = true;
+          this.info = null;
+          this.annotation = null;
+      }
+      /** Show the model or player identity the link supplied for the owner. */
+      renderModel() {
+          this.modelLine.textContent = this.annotation || '';
+          this.modelLine.hidden = !this.annotation;
+      }
+      /** Draw the civilization name in its border color with the city behind it. */
+      renderOwner() {
+          var _a;
+          this.ownerLine.textContent = '';
+          if (!((_a = this.info) === null || _a === void 0 ? void 0 : _a.owner)) {
+              this.ownerLine.hidden = true;
+              return;
+          }
+          this.ownerLine.hidden = false;
+          const name = document.createElement('span');
+          const colors = getCivColors(this.info.owner);
+          if (colors)
+              name.style.color = `rgb(${colors.territory.join(',')})`;
+          name.textContent = this.info.owner;
+          this.ownerLine.appendChild(name);
+          if (this.info.city) {
+              const city = document.createElement('span');
+              city.className = 'tt-city';
+              city.textContent = ` (${this.info.city})`;
+              this.ownerLine.appendChild(city);
+          }
+      }
+      /** Join the terrain facts that exist: type, hills or mountain, feature, river. */
+      terrainText(tile) {
+          const parts = [];
+          if (tile.type >= 0)
+              parts.push(getTileTypeName(tile.type));
+          if (tile.elevation === ElevationType.Hills || tile.elevation === ElevationType.Mountain) {
+              parts.push(getElevationName(tile.elevation));
+          }
+          if (tile.feature >= 0 && tile.feature !== FeatureType.NoFeature)
+              parts.push(getFeatureName(tile.feature));
+          const rivers = tile.rivers;
+          if (Array.isArray(rivers) && rivers.some(id => id >= 0))
+              parts.push('River');
+          return parts.join(' · ');
+      }
+  }
+
+  /**
+   * Shared flat-coordinate geometry for the replay map.
+   * The renderer, river topology, borders, picking, and map fitting all use
+   * these helpers so a plot has one stable location everywhere.
+   */
+  // Pointy hex dimensions in world coordinates. A radius of one keeps fitting
+  // and picking independent from the viewport's current pixel scale.
+  const hexRadius = 1;
+  const hexWidth = Math.sqrt(3) * hexRadius;
+  const hexRowSpacing = 1.5 * hexRadius;
+  const directions = ['NE', 'E', 'SE', 'SW', 'W', 'NW'];
+  /**
+   * Return the opposite side of a shared hex edge.
+   */
+  function oppositeDirection(direction) {
+      return directions[(directions.indexOf(direction) + 3) % directions.length];
+  }
+  /**
+   * Build a stable key for a tile coordinate.
+   */
+  function tileKey(tile) {
+      return `${tile.x},${tile.y}`;
+  }
+  /**
+   * Return the center of a pointy hex in the flat shared map coordinate system.
+   */
+  function hexCenter(tile) {
+      return {
+          x: (tile.x + (tile.y % 2 === 0 ? 0 : 0.5)) * hexWidth,
+          y: tile.y * hexRowSpacing
+      };
+  }
+  /**
+   * Return the six vertices of a pointy hex, beginning at its top point.
+   */
+  function hexCorners(tile) {
+      const center = hexCenter(tile);
+      return Array.from({ length: 6 }, (_, index) => {
+          const angle = Math.PI / 2 - index * Math.PI / 3;
+          return {
+              x: center.x + Math.cos(angle) * hexRadius,
+              y: center.y + Math.sin(angle) * hexRadius
+          };
+      });
+  }
+  /**
+   * Return the two corners that make up a direction's outward edge.
+   */
+  function edgeCorners(tile, direction) {
+      const corners = hexCorners(tile);
+      const edgeIndex = directions.indexOf(direction);
+      return [corners[edgeIndex], corners[(edgeIndex + 1) % corners.length]];
+  }
+  /**
+   * Offset both endpoints of an edge toward a hex center by a world distance.
+   * Borders and highlight outlines use this to keep every stroke inside its
+   * own hexagon, leaving the shared edge itself free for the feature that
+   * belongs to both sides, such as a river.
+   */
+  function insetEdgeToward(points, center, distance) {
+      const midpoint = { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 };
+      const length = Math.hypot(center.x - midpoint.x, center.y - midpoint.y) || 1;
+      const x = (center.x - midpoint.x) / length * distance;
+      const y = (center.y - midpoint.y) / length * distance;
+      return [
+          { x: points[0].x + x, y: points[0].y + y },
+          { x: points[1].x + x, y: points[1].y + y }
+      ];
+  }
+  /**
+   * Look up a neighbor using the map's staggered rows and optional horizontal wrap.
+   */
+  function neighborFor(tile, direction, options) {
+      const oddRow = tile.y % 2 !== 0;
+      const offsets = oddRow
+          ? { NE: [1, 1], E: [1, 0], SE: [1, -1], SW: [0, -1], W: [-1, 0], NW: [0, 1] }
+          : { NE: [0, 1], E: [1, 0], SE: [0, -1], SW: [-1, -1], W: [-1, 0], NW: [-1, 1] };
+      let x = tile.x + offsets[direction][0];
+      const y = tile.y + offsets[direction][1];
+      if (y < 0 || y >= options.height || options.width <= 0) {
+          return null;
+      }
+      if (x < 0 || x >= options.width) {
+          if (!options.wrapX) {
+              return null;
+          }
+          x = (x + options.width) % options.width;
+      }
+      return { x, y };
+  }
+  /**
+   * Build the canonical key for an edge, including wrapped seam neighbors.
+   */
+  function sharedEdgeKey(tile, direction, options) {
+      const neighbor = neighborFor(tile, direction, options);
+      if (!neighbor) {
+          return `${tileKey(tile)}:${direction}`;
+      }
+      return [tileKey(tile), tileKey(neighbor)].sort().join('|');
+  }
+  /**
+   * Deduplicate parsed river ids into drawable shared edges. Edges that touch
+   * a water plot are dropped: the save encodes every lake shoreline as river
+   * records with the lake's own river id, and one-tile lakes neighbor only
+   * land, so the only reliable lake marker is water terrain on either side.
+   */
+  function buildRiverEdges(tiles, options) {
+      /** Check whether a plot is coast, ocean, or a lake stored as coast. */
+      const isWater = (tile) => tile.type === TileType.Coast || tile.type === TileType.Ocean;
+      const edges = new Map();
+      for (let y = 0; y < tiles.length; y++) {
+          for (let x = 0; x < tiles[y].length; x++) {
+              const tileData = tiles[y][x];
+              const rivers = tileData.rivers || [];
+              for (let index = 0; index < directions.length; index++) {
+                  const riverId = rivers[index];
+                  if (riverId === undefined || riverId < 0) {
+                      continue;
+                  }
+                  const tile = { x, y };
+                  const direction = directions[index];
+                  const neighbor = neighborFor(tile, direction, options);
+                  if (isWater(tileData) || (neighbor && isWater(tiles[neighbor.y][neighbor.x]))) {
+                      continue;
+                  }
+                  const key = sharedEdgeKey(tile, direction, options);
+                  if (edges.has(key)) {
+                      continue;
+                  }
+                  const edge = { key, direction, tile, neighbor, riverId, points: edgeCorners(tile, direction) };
+                  if (neighbor && Math.abs(neighbor.x - tile.x) > 1) {
+                      edge.seamPoints = edgeCorners(neighbor, oppositeDirection(direction));
+                  }
+                  edges.set(key, edge);
+              }
+          }
+      }
+      return Array.from(edges.values());
+  }
+  /**
+   * Map a world point to the nearest staggered tile, then verify it is inside
+   * the actual hex so gaps around corners do not select a neighboring plot.
+   */
+  function pickHex(point, options) {
+      const estimatedY = Math.round(point.y / hexRowSpacing);
+      for (let y = estimatedY - 1; y <= estimatedY + 1; y++) {
+          if (y < 0 || y >= options.height) {
+              continue;
+          }
+          const rowOffset = y % 2 === 0 ? 0 : 0.5;
+          const estimatedX = Math.round(point.x / hexWidth - rowOffset);
+          for (let x = estimatedX - 1; x <= estimatedX + 1; x++) {
+              if (x < 0 || x >= options.width) {
+                  continue;
+              }
+              const center = hexCenter({ x, y });
+              const dx = Math.abs(point.x - center.x);
+              const dy = Math.abs(point.y - center.y);
+              const horizontalLimit = Math.min(hexWidth / 2, Math.sqrt(3) * (hexRadius - dy));
+              if (dx <= horizontalLimit && dy <= hexRadius) {
+                  return { x, y };
+              }
+          }
+      }
+      return null;
+  }
+  /**
+   * Select a stable LOD, using 15 percent hysteresis after the first choice.
+   */
+  function nextMapLod(hexWidthPixels, previous) {
+      if (!previous) {
+          return hexWidthPixels < 10 ? 'world' : hexWidthPixels < 28 ? 'regional' : 'local';
+      }
+      if (previous === 'world') {
+          return hexWidthPixels > 32.2 ? 'local' : hexWidthPixels > 11.5 ? 'regional' : 'world';
+      }
+      if (previous === 'regional') {
+          if (hexWidthPixels < 8.5)
+              return 'world';
+          return hexWidthPixels > 32.2 ? 'local' : 'regional';
+      }
+      return hexWidthPixels < 8.5 ? 'world' : hexWidthPixels < 23.8 ? 'regional' : 'local';
   }
 
   /**
@@ -660,6 +832,7 @@
           this.cityMarkers = [];
           this.eventHexes = new Set();
           this.selectedHex = null;
+          this.hoveredHex = null;
           this.highlightedCivs = new Set();
           this.assetLoadHandlers = [];
           this.pendingGeography = false;
@@ -784,6 +957,15 @@
           return this.selectedHex;
       }
       /**
+       * Outline the plot under the cursor with a quiet grid-style border.
+       */
+      setHoveredHex(hexKey) {
+          if (this.hoveredHex === hexKey)
+              return;
+          this.hoveredHex = hexKey;
+          this.scheduleRender();
+      }
+      /**
        * Change highlighted political borders without creating another layer.
        */
       setHighlightedCivs(civNames) {
@@ -795,6 +977,7 @@
        */
       clearHighlights() {
           this.selectedHex = null;
+          this.hoveredHex = null;
           this.highlightedCivs.clear();
           this.eventHexes.clear();
           this.scheduleRender();
@@ -1168,7 +1351,7 @@
           this.context.restore();
       }
       /**
-       * Draw current-turn events and the selected plot above all map content.
+       * Draw the hovered, event, and selected plots above all map content.
        * Each highlighted group is drawn as one region: only the edges facing
        * unhighlighted neighbors are stroked, and each stroke is inset into the
        * highlighted hexagon, so the outline hugs the inside of the region and
@@ -1177,6 +1360,9 @@
       drawHighlights() {
           if (!this.context)
               return;
+          if (this.hoveredHex) {
+              this.drawHighlightRegion(new Set([this.hoveredHex]), this.lod === 'world' ? 0.8 : 1.5, [], 'rgba(242, 233, 196, 0.9)');
+          }
           if (this.layers.events.visible && this.eventHexes.size > 0) {
               this.drawHighlightRegion(this.eventHexes, this.lod === 'world' ? 0.8 : 3, this.lod === 'world' ? [1.5, 1.5] : [5, 4]);
           }
@@ -1189,12 +1375,12 @@
        * Edges shared with another highlighted hex are skipped so interior cell
        * boundaries disappear and the group reads as a single outlined shape.
        */
-      drawHighlightRegion(keys, width, dash) {
+      drawHighlightRegion(keys, width, dash, color = '#ffeb3b') {
           var _a;
           if (!this.context)
               return;
           this.context.save();
-          this.context.strokeStyle = '#ffeb3b';
+          this.context.strokeStyle = color;
           this.context.lineWidth = width;
           this.context.setLineDash(dash);
           this.context.lineCap = 'round';
@@ -1387,7 +1573,7 @@
    * Own the Leaflet camera and connect the session to the one-canvas renderer.
    */
   class ReplayMap {
-      /** Create the Leaflet camera in flat map coordinates. */
+      /** Create the Leaflet camera in flat map coordinates and wire hover tooltips. */
       constructor() {
           this.turn = -1;
           this.layers = {};
@@ -1397,6 +1583,9 @@
           this.renderer = null;
           this.unsubscribeSession = null;
           this.highlightedCivs = new Set();
+          this.hoveredHex = null;
+          this.dragging = false;
+          this.civAnnotations = {};
           this.map = L.map(document.querySelector('.map'), {
               attributionControl: false,
               zoomControl: false,
@@ -1407,13 +1596,67 @@
               wheelPxPerZoomLevel: 120,
               crs: L.CRS.Simple
           }).setView([0, 0], 0);
+          this.tooltip = new TileTooltip(this.map.getContainer());
+          this.map.on('mousemove', (event) => this.handleHover(event));
+          this.map.on('mouseout', () => this.clearHover());
+          this.map.on('zoomstart', () => this.clearHover());
+          this.map.on('dragstart', () => {
+              this.dragging = true;
+              this.clearHover();
+          });
+          this.map.on('dragend', () => {
+              this.dragging = false;
+          });
+      }
+      /**
+       * Show or move the tile tooltip for the plot under the cursor.
+       */
+      handleHover(event) {
+          var _a;
+          if (this.dragging || !this.renderer || !this.session)
+              return;
+          const hex = this.renderer.pickLatLng(event.latlng);
+          const tile = hex ? this.session.replay.getTileAt(hex.x, hex.y) : null;
+          if (!hex || !tile || tile.type < 0) {
+              this.clearHover();
+              return;
+          }
+          const key = `${hex.x},${hex.y}`;
+          if (key !== this.hoveredHex) {
+              this.hoveredHex = key;
+              const info = ((_a = this.turnState) === null || _a === void 0 ? void 0 : _a[key]) || null;
+              this.renderer.setHoveredHex(key);
+              this.tooltip.setTile(hex.x, hex.y, tile, info, this.annotationForOwner(info === null || info === void 0 ? void 0 : info.owner));
+          }
+          this.tooltip.moveTo(event.containerPoint);
+      }
+      /**
+       * Forget the hovered plot, drop its outline, and hide the tooltip.
+       */
+      clearHover() {
+          var _a;
+          this.hoveredHex = null;
+          (_a = this.renderer) === null || _a === void 0 ? void 0 : _a.setHoveredHex(null);
+          this.tooltip.hide();
+      }
+      /**
+       * Find the link-supplied model or player label behind a civilization name.
+       */
+      annotationForOwner(owner) {
+          var _a;
+          if (!owner || !this.session)
+              return null;
+          const civId = this.session.replay.civs.findIndex(civ => civ.name === owner);
+          return civId >= 0 ? (_a = this.civAnnotations[civId]) !== null && _a !== void 0 ? _a : null : null;
       }
       /**
        * Create a fresh one-canvas renderer and follow the supplied session.
        */
-      initLayers(session) {
+      initLayers(session, annotations = {}) {
           var _a;
           this.removeRenderer();
+          this.clearHover();
+          this.civAnnotations = annotations;
           this.session = session;
           this.events = session.replay.events;
           const tiles = session.replay.tiles;
@@ -1439,12 +1682,17 @@
           this.turn = turn;
           this.turnState = state || this.session.stateAt(turn);
           this.renderer.setTurn(turn, this.turnState);
+          if (this.hoveredHex) {
+              const info = this.turnState[this.hoveredHex] || null;
+              this.tooltip.setInfo(info, this.annotationForOwner(info === null || info === void 0 ? void 0 : info.owner));
+          }
       }
       /**
        * Detach the session and clear transient selection and event highlighting.
        */
       resetTurnState() {
           var _a;
+          this.clearHover();
           this.turn = -1;
           this.turnState = undefined;
           if (this.unsubscribeSession)
@@ -6225,8 +6473,9 @@
               return;
           // The event log, with the address bar annotations
           this.eventLog = new EventLog(this.session, annotations);
-          // Map layers and the layers panel that toggles them
-          this.map.initLayers(this.session);
+          // Map layers and the layers panel that toggles them, with the
+          // annotations so plot tooltips can name the model behind an owner
+          this.map.initLayers(this.session, annotations);
           this.layersControl = new LayersControl(this.map.map, Object.entries(this.map.getToggleableLayers())
               .map(([label, layer]) => ({ label, layer })));
           // Reinitialize the control bar with the new session (reuses the instance)

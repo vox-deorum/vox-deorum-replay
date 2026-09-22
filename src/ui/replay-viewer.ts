@@ -476,8 +476,9 @@ export class ReplayViewer {
 		// The event log, with the address bar annotations
 		this.eventLog = new EventLog(this.session, annotations);
 
-		// Map layers and the layers panel that toggles them
-		this.map.initLayers(this.session);
+		// Map layers and the layers panel that toggles them, with the
+		// annotations so plot tooltips can name the model behind an owner
+		this.map.initLayers(this.session, annotations);
 		this.layersControl = new LayersControl(this.map.map, Object.entries(this.map.getToggleableLayers())
 			.map(([label, layer]) => ({ label, layer })));
 

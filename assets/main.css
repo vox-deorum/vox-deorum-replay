@@ -14,7 +14,7 @@
    5. Header
    6. Destination tabs (narrow screens)
    7. Content layout: map and events panels
-   8. Map toolbar, layers panel, and map buttons
+   8. Map toolbar, layers panel, map buttons, and tile tooltip
    9. Events panel: header, filter, and log
    10. Timeline: transport, range input, chips, popover
    11. Empty state
@@ -372,7 +372,7 @@ summary::-webkit-details-marker {
 }
 
 /* ==========================================================
-   8. Map toolbar, layers panel, and map buttons
+   8. Map toolbar, layers panel, map buttons, and tile tooltip
    ========================================================== */
 .map-toolbar {
 	position: absolute;
@@ -437,6 +437,44 @@ summary::-webkit-details-marker {
 	width: 42px;
 	height: 42px;
 	padding: 0;
+}
+
+/* Hover card describing the map plot under the cursor */
+.tile-tooltip {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 500;
+	pointer-events: none;
+	background: rgba(22, 36, 31, 0.95);
+	border: 1px solid var(--border-gold);
+	border-radius: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	padding: 7px 10px;
+	font-size: 0.85rem;
+	line-height: 1.45;
+	white-space: nowrap;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.tile-tooltip .tt-coords {
+	color: var(--parchment-dim);
+}
+
+/* Fallback tint for owners whose civilization color is unknown */
+.tile-tooltip .tt-owner span:first-child {
+	color: var(--gold-bright);
+}
+
+.tile-tooltip .tt-city,
+.tile-tooltip .tt-terrain {
+	color: var(--parchment);
+}
+
+/* Model or player identity line, quieter than the civ name above it */
+.tile-tooltip .tt-model {
+	color: var(--parchment-dim);
+	font-size: 0.78rem;
 }
 
 /* ==========================================================

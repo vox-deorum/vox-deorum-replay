@@ -6,6 +6,8 @@
 
 import { GameEvent, TurnState } from '../replay/types';
 import { GameSession } from '../replay/session';
+import { CivAnnotations } from '../ui/annotations';
+import { TileTooltip } from '../ui/tile-tooltip';
 import { hexCenter, hexRadius, hexWidth } from './hex-geometry';
 import { RendererLayer, ViewportLayer } from './viewport-layer';
 
@@ -25,8 +27,12 @@ export class ReplayMap {
 	private renderer: ViewportLayer | null = null;
 	private unsubscribeSession: (() => void) | null = null;
 	private highlightedCivs = new Set<string>();
+	private tooltip: TileTooltip;
+	private hoveredHex: string | null = null;
+	private dragging = false;
+	private civAnnotations: CivAnnotations = {};
 
-	/** Create the Leaflet camera in flat map coordinates. */
+	/** Create the Leaflet camera in flat map coordinates and wire hover tooltips. */
 	constructor() {
 		this.map = L.map(document.querySelector('.map'), {
 			attributionControl: false,
@@ -38,13 +44,65 @@ export class ReplayMap {
 			wheelPxPerZoomLevel: 120,
 			crs: L.CRS.Simple
 		}).setView([0, 0], 0);
+		this.tooltip = new TileTooltip(this.map.getContainer());
+		this.map.on('mousemove', (event: any) => this.handleHover(event));
+		this.map.on('mouseout', () => this.clearHover());
+		this.map.on('zoomstart', () => this.clearHover());
+		this.map.on('dragstart', () => {
+			this.dragging = true;
+			this.clearHover();
+		});
+		this.map.on('dragend', () => {
+			this.dragging = false;
+		});
+	}
+
+	/**
+	 * Show or move the tile tooltip for the plot under the cursor.
+	 */
+	private handleHover(event: any): void {
+		if (this.dragging || !this.renderer || !this.session) return;
+		const hex = this.renderer.pickLatLng(event.latlng);
+		const tile = hex ? this.session.replay.getTileAt(hex.x, hex.y) : null;
+		if (!hex || !tile || (tile.type as number) < 0) {
+			this.clearHover();
+			return;
+		}
+		const key = `${hex.x},${hex.y}`;
+		if (key !== this.hoveredHex) {
+			this.hoveredHex = key;
+			const info = this.turnState?.[key] || null;
+			this.renderer.setHoveredHex(key);
+			this.tooltip.setTile(hex.x, hex.y, tile, info, this.annotationForOwner(info?.owner));
+		}
+		this.tooltip.moveTo(event.containerPoint);
+	}
+
+	/**
+	 * Forget the hovered plot, drop its outline, and hide the tooltip.
+	 */
+	private clearHover(): void {
+		this.hoveredHex = null;
+		this.renderer?.setHoveredHex(null);
+		this.tooltip.hide();
+	}
+
+	/**
+	 * Find the link-supplied model or player label behind a civilization name.
+	 */
+	private annotationForOwner(owner?: string): string | null {
+		if (!owner || !this.session) return null;
+		const civId = this.session.replay.civs.findIndex(civ => civ.name === owner);
+		return civId >= 0 ? this.civAnnotations[civId] ?? null : null;
 	}
 
 	/**
 	 * Create a fresh one-canvas renderer and follow the supplied session.
 	 */
-	initLayers(session: GameSession): void {
+	initLayers(session: GameSession, annotations: CivAnnotations = {}): void {
 		this.removeRenderer();
+		this.clearHover();
+		this.civAnnotations = annotations;
 		this.session = session;
 		this.events = session.replay.events;
 		const tiles = session.replay.tiles;
@@ -71,12 +129,17 @@ export class ReplayMap {
 		this.turn = turn;
 		this.turnState = state || this.session.stateAt(turn);
 		this.renderer.setTurn(turn, this.turnState);
+		if (this.hoveredHex) {
+			const info = this.turnState[this.hoveredHex] || null;
+			this.tooltip.setInfo(info, this.annotationForOwner(info?.owner));
+		}
 	}
 
 	/**
 	 * Detach the session and clear transient selection and event highlighting.
 	 */
 	resetTurnState(): void {
+		this.clearHover();
 		this.turn = -1;
 		this.turnState = undefined;
 		if (this.unsubscribeSession) this.unsubscribeSession();

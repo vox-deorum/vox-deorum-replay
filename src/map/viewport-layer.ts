@@ -136,6 +136,7 @@ export class ViewportLayer extends L.Layer {
 	private cityMarkers: CityMarker[] = [];
 	private eventHexes = new Set<string>();
 	private selectedHex: string | null = null;
+	private hoveredHex: string | null = null;
 	private highlightedCivs = new Set<string>();
 	private readonly assetLoadHandlers: Array<{ image: HTMLImageElement; handler: () => void }> = [];
 	private pendingGeography = false;
@@ -265,6 +266,15 @@ export class ViewportLayer extends L.Layer {
 	}
 
 	/**
+	 * Outline the plot under the cursor with a quiet grid-style border.
+	 */
+	setHoveredHex(hexKey: string | null): void {
+		if (this.hoveredHex === hexKey) return;
+		this.hoveredHex = hexKey;
+		this.scheduleRender();
+	}
+
+	/**
 	 * Change highlighted political borders without creating another layer.
 	 */
 	setHighlightedCivs(civNames: string[]): void {
@@ -277,6 +287,7 @@ export class ViewportLayer extends L.Layer {
 	 */
 	clearHighlights(): void {
 		this.selectedHex = null;
+		this.hoveredHex = null;
 		this.highlightedCivs.clear();
 		this.eventHexes.clear();
 		this.scheduleRender();
@@ -642,7 +653,7 @@ export class ViewportLayer extends L.Layer {
 	}
 
 	/**
-	 * Draw current-turn events and the selected plot above all map content.
+	 * Draw the hovered, event, and selected plots above all map content.
 	 * Each highlighted group is drawn as one region: only the edges facing
 	 * unhighlighted neighbors are stroked, and each stroke is inset into the
 	 * highlighted hexagon, so the outline hugs the inside of the region and
@@ -650,6 +661,9 @@ export class ViewportLayer extends L.Layer {
 	 */
 	private drawHighlights(): void {
 		if (!this.context) return;
+		if (this.hoveredHex) {
+			this.drawHighlightRegion(new Set([this.hoveredHex]), this.lod === 'world' ? 0.8 : 1.5, [], 'rgba(242, 233, 196, 0.9)');
+		}
 		if (this.layers.events.visible && this.eventHexes.size > 0) {
 			this.drawHighlightRegion(this.eventHexes, this.lod === 'world' ? 0.8 : 3, this.lod === 'world' ? [1.5, 1.5] : [5, 4]);
 		}
@@ -663,10 +677,10 @@ export class ViewportLayer extends L.Layer {
 	 * Edges shared with another highlighted hex are skipped so interior cell
 	 * boundaries disappear and the group reads as a single outlined shape.
 	 */
-	private drawHighlightRegion(keys: Set<string>, width: number, dash: number[]): void {
+	private drawHighlightRegion(keys: Set<string>, width: number, dash: number[], color = '#ffeb3b'): void {
 		if (!this.context) return;
 		this.context.save();
-		this.context.strokeStyle = '#ffeb3b';
+		this.context.strokeStyle = color;
 		this.context.lineWidth = width;
 		this.context.setLineDash(dash);
 		this.context.lineCap = 'round';
