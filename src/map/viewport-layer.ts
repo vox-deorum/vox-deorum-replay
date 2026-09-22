@@ -77,7 +77,14 @@ const reliefImages: Record<number, string> = {
 const featureImages: Record<number, string> = {
 	[FeatureType.Ice]: 'ICE',
 	[FeatureType.Jungle]: 'JUNGLE',
-	[FeatureType.Forest]: 'FOREST'
+	[FeatureType.Forest]: 'FOREST',
+	[FeatureType.Marsh]: 'MARSH',
+	[FeatureType.Oasis]: 'OASIS',
+	[FeatureType.FloodPlains]: 'FLOOD_PLAINS',
+	[FeatureType.Atoll]: 'ATOLL',
+	[FeatureType.CerroDePotosi]: 'CERRO_DE_POTOSI',
+	[FeatureType.SriPada]: 'NATURAL_WONDER',
+	[FeatureType.MtSinai]: 'NATURAL_WONDER'
 };
 
 /**
@@ -478,7 +485,10 @@ export class ViewportLayer extends L.Layer {
 			if (this.lod !== 'world') this.drawStaticTexture(context, terrainImages[tile.type], tile, minX, maxY, scale, padding);
 		}
 		if (this.lod !== 'world' && this.layers.relief.visible) this.drawStaticTexture(context, reliefImages[tile.elevation], tile, minX, maxY, scale, padding);
-		if (this.lod !== 'world' && this.layers.features.visible) this.drawStaticFeature(context, tile, minX, maxY, scale, padding);
+		if (this.lod !== 'world' && this.layers.features.visible) {
+			const featureImage = tile.feature === FeatureType.NoFeature ? undefined : featureImages[tile.feature] || 'NATURAL_WONDER';
+			this.drawStaticTexture(context, featureImage, tile, minX, maxY, scale, padding);
+		}
 	}
 
 	/**
@@ -508,44 +518,6 @@ export class ViewportLayer extends L.Layer {
 			const width = hexWidth * scale;
 			context.drawImage(image, (center.x - hexWidth / 2 - minX) * scale + padding, (maxY - center.y - hexRadius) * scale + padding, width, width * 2 / Math.sqrt(3));
 		});
-	}
-
-	/**
-	 * Draw static feature art or the simple approved placeholder marks.
-	 */
-	private drawStaticFeature(context: CanvasRenderingContext2D, tile: Tile, minX: number, maxY: number, scale: number, padding: number): void {
-		const imageId = featureImages[tile.feature];
-		if (imageId) {
-			this.drawStaticTexture(context, imageId, tile, minX, maxY, scale, padding);
-			return;
-		}
-		if (tile.feature === FeatureType.NoFeature) return;
-		const center = hexCenter(tile);
-		const x = (center.x - minX) * scale + padding;
-		const y = (maxY - center.y) * scale + padding;
-		if (tile.feature === FeatureType.Marsh || tile.feature === FeatureType.FloodPlains) {
-			context.fillStyle = 'rgba(66, 104, 76, 0.35)';
-			context.beginPath();
-			context.ellipse(x, y, hexWidth * scale * 0.28, hexWidth * scale * 0.16, 0, 0, Math.PI * 2);
-			context.fill();
-		} else if (tile.feature === FeatureType.Oasis) {
-			context.fillStyle = 'rgba(37, 130, 154, 0.75)';
-			context.beginPath();
-			context.arc(x, y, Math.max(2, hexWidth * scale * 0.12), 0, Math.PI * 2);
-			context.fill();
-		} else if (tile.feature === FeatureType.Atoll) {
-			context.strokeStyle = 'rgba(226, 239, 221, 0.8)';
-			context.lineWidth = Math.max(1, hexWidth * scale * 0.05);
-			context.beginPath();
-			context.arc(x, y, Math.max(2, hexWidth * scale * 0.18), 0, Math.PI * 2);
-			context.stroke();
-		} else if (tile.feature === FeatureType.CerroDePotosi || tile.feature === FeatureType.SriPada || tile.feature === FeatureType.MtSinai) {
-			context.fillStyle = '#f4df77';
-			context.font = `${Math.max(10, hexWidth * scale * 0.34)}px sans-serif`;
-			context.textAlign = 'center';
-			context.textBaseline = 'middle';
-			context.fillText('◆', x, y);
-		}
 	}
 
 	/**
