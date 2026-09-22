@@ -4,7 +4,7 @@
  * ownership, cities, borders, selection, and events are drawn in one pass.
  */
 
-import { CivColors } from '../utils/civ-colors';
+import { CivColors, isCityState } from '../utils/civ-colors';
 import { ElevationType, FeatureType, GameEvent, Tile, TurnState, TileType } from '../replay/types';
 import { FrameCoalescer, GeographyChunk, GeographyChunkCache, ownershipChanges } from './renderer-support';
 import {
@@ -533,7 +533,9 @@ export class ViewportLayer extends L.Layer {
 
 	/**
 	 * Fill owned plots with the owning civilization's territory tint, lighter
-	 * over water so coast and ocean remain recognizable.
+	 * over water so coast and ocean remain recognizable. Major civilizations
+	 * paint at a stronger alpha than the uniform gray of city-states so their
+	 * land stays easy to pick out at a glance.
 	 */
 	private drawTerritory(tiles: Tile[]): void {
 		if (!this.context || !this.layers.territory.visible) return;
@@ -542,8 +544,10 @@ export class ViewportLayer extends L.Layer {
 			if (!state?.owner) continue;
 			const color = CivColors[state.owner]?.territory || [80, 80, 80];
 			const water = tile.type === TileType.Coast || tile.type === TileType.Ocean;
+			const major = !isCityState(state.owner);
+			const alpha = major ? (water ? 0.32 : 0.45) : (water ? 0.2 : 0.3);
 			this.drawHex(tile, () => {
-				this.context!.fillStyle = `rgba(${color.join(',')}, ${water ? 0.2 : 0.3})`;
+				this.context!.fillStyle = `rgba(${color.join(',')}, ${alpha})`;
 				this.context!.fill();
 			});
 		}

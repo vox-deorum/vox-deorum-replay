@@ -9,7 +9,7 @@
 
 import { ElevationType, FeatureType, Tile, TileStateInfo } from '../replay/types';
 import { getElevationName, getFeatureName, getTileTypeName } from '../map/utils/enum-names';
-import { getCivColors } from '../utils/civ-colors';
+import { getCivTextColor } from '../utils/civ-colors';
 
 /** Cursor offset used when placing the card, and the gap kept from the edges. */
 const cursorOffset = 14;
@@ -95,7 +95,7 @@ export class TileTooltip {
 		this.modelLine.hidden = !this.annotation;
 	}
 
-	/** Draw the civilization name in its border color with the city behind it. */
+	/** Draw the civilization name in a readable color with the city behind it. */
 	private renderOwner(): void {
 		this.ownerLine.textContent = '';
 		if (!this.info?.owner) {
@@ -104,8 +104,8 @@ export class TileTooltip {
 		}
 		this.ownerLine.hidden = false;
 		const name = document.createElement('span');
-		const colors = getCivColors(this.info.owner);
-		if (colors) name.style.color = `rgb(${colors.territory.join(',')})`;
+		const color = getCivTextColor(this.info.owner);
+		if (color) name.style.color = `rgb(${color.join(',')})`;
 		name.textContent = this.info.owner;
 		this.ownerLine.appendChild(name);
 		if (this.info.city) {

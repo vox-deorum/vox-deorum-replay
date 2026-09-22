@@ -121,10 +121,9 @@
    * color, matching how the game itself paints empire borders and banners. The
    * values come from the base game color XML, which Vox Populi leaves unchanged.
    *
-   * City-states carry one identity color in both slots. The base game city-states
-   * use their assigned palette color, and the city-states themed after a major
-   * civilization use the themed background Vox Populi gives them (NewColors.xml),
-   * often brightened so it stays readable as a border color.
+   * City-states all share one neutral gray in both slots so the major
+   * civilizations' colors stay the loudest thing on the map, in labels, and in
+   * territory tints.
    *
    * Note: Replay files don't include color data, so these are hardcoded defaults.
    */
@@ -173,126 +172,63 @@
       'The Ottomans': { city: [18, 82, 30], territory: [247, 249, 200] },
       'The Shoshone': { city: [25, 240, 206], territory: [74, 59, 46] },
       'The Zulus': { city: [107, 50, 25], territory: [255, 232, 214] },
-      // City-states
-      Abernethy: { city: [49, 205, 143], territory: [49, 205, 143] },
-      Aksum: { city: [10, 205, 82], territory: [10, 205, 82] },
-      Almaty: { city: [230, 166, 82], territory: [230, 166, 82] },
-      Antananarivo: { city: [255, 217, 143], territory: [255, 217, 143] },
-      Antwerp: { city: [196, 87, 255], territory: [196, 87, 255] },
-      Argos: { city: [255, 255, 255], territory: [255, 255, 255] },
-      Assur: { city: [255, 244, 174], territory: [255, 244, 174] },
-      Aztlan: { city: [161, 57, 35], territory: [161, 57, 35] },
-      'Ban Chiang': { city: [245, 230, 55], territory: [245, 230, 55] },
-      Belgrade: { city: [125, 224, 0], territory: [125, 224, 0] },
-      Bogota: { city: [172, 30, 185], territory: [172, 30, 185] },
-      Bornu: { city: [18, 204, 245], territory: [18, 204, 245] },
-      Brandenburg: { city: [179, 178, 184], territory: [179, 178, 184] },
-      Bratislava: { city: [230, 230, 230], territory: [230, 230, 230] },
-      Brussels: { city: [128, 178, 255], territory: [128, 178, 255] },
-      Bucharest: { city: [128, 255, 128], territory: [128, 255, 128] },
-      Budapest: { city: [178, 178, 178], territory: [178, 178, 178] },
-      'Buenos Aires': { city: [178, 153, 255], territory: [178, 153, 255] },
-      Bunkeya: { city: [128, 255, 128], territory: [128, 255, 128] },
-      Byblos: { city: [172, 30, 185], territory: [172, 30, 185] },
-      Cahokia: { city: [230, 230, 230], territory: [230, 230, 230] },
-      'Cape Town': { city: [230, 166, 82], territory: [230, 166, 82] },
-      Colombo: { city: [178, 153, 255], territory: [178, 153, 255] },
-      Copenhagen: { city: [166, 96, 51], territory: [166, 96, 51] },
-      Djenne: { city: [214, 145, 19], territory: [214, 145, 19] },
-      Dorestad: { city: [255, 144, 0], territory: [255, 144, 0] },
-      Dublin: { city: [49, 205, 143], territory: [49, 205, 143] },
-      Ecbatana: { city: [167, 94, 61], territory: [167, 94, 61] },
-      Edinburgh: { city: [49, 205, 143], territory: [49, 205, 143] },
-      Enns: { city: [255, 174, 255], territory: [255, 174, 255] },
-      Eraclea: { city: [129, 43, 205], territory: [129, 43, 205] },
-      Florence: { city: [18, 204, 245], territory: [18, 204, 245] },
-      Geneva: { city: [0, 56, 233], territory: [0, 56, 233] },
-      Genoa: { city: [0, 163, 181], territory: [0, 163, 181] },
-      Hanoi: { city: [178, 153, 255], territory: [178, 153, 255] },
-      Harappa: { city: [18, 136, 7], territory: [18, 136, 7] },
-      Heidabir: { city: [166, 96, 51], territory: [166, 96, 51] },
-      Helsinki: { city: [255, 255, 0], territory: [255, 255, 0] },
-      Holmul: { city: [198, 141, 99], territory: [198, 141, 99] },
-      'Hong Kong': { city: [54, 102, 255], territory: [54, 102, 255] },
-      Huari: { city: [255, 185, 34], territory: [255, 185, 34] },
-      Ife: { city: [178, 178, 178], territory: [178, 178, 178] },
-      Jakarta: { city: [111, 211, 218], territory: [111, 211, 218] },
-      Jerusalem: { city: [230, 230, 230], territory: [230, 230, 230] },
-      Kabul: { city: [167, 94, 61], territory: [167, 94, 61] },
-      Kathmandu: { city: [172, 30, 185], territory: [172, 30, 185] },
-      'Kuala Lumpur': { city: [255, 255, 43], territory: [255, 255, 43] },
-      'Kwa Bulawayo': { city: [255, 232, 214], territory: [255, 232, 214] },
-      Kyiv: { city: [54, 102, 255], territory: [54, 102, 255] },
-      Kyzyl: { city: [0, 163, 181], territory: [0, 163, 181] },
-      'La Venta': { city: [18, 204, 245], territory: [18, 204, 245] },
-      Lhasa: { city: [128, 255, 128], territory: [128, 255, 128] },
-      Lisbon: { city: [255, 255, 255], territory: [255, 255, 255] },
-      Longcheng: { city: [180, 178, 164], territory: [180, 178, 164] },
-      Luba: { city: [255, 255, 43], territory: [255, 255, 43] },
-      Lutetia: { city: [65, 141, 254], territory: [65, 141, 254] },
-      Malacca: { city: [18, 204, 245], territory: [18, 204, 245] },
-      Manila: { city: [128, 255, 128], territory: [128, 255, 128] },
-      Marrakech: { city: [212, 175, 55], territory: [212, 175, 55] },
-      'Mbanza Kongo': { city: [18, 204, 245], territory: [18, 204, 245] },
-      Melbourne: { city: [128, 255, 128], territory: [128, 255, 128] },
-      Milan: { city: [230, 166, 82], territory: [230, 166, 82] },
-      Mogadishu: { city: [128, 178, 255], territory: [128, 178, 255] },
-      Mombasa: { city: [125, 224, 0], territory: [125, 224, 0] },
-      Monaco: { city: [196, 87, 255], territory: [196, 87, 255] },
-      Msoura: { city: [212, 175, 55], territory: [212, 175, 55] },
-      Nippur: { city: [90, 167, 205], territory: [90, 167, 205] },
-      Novgorod: { city: [239, 180, 0], territory: [239, 180, 0] },
-      Okilis: { city: [205, 63, 63], territory: [205, 63, 63] },
-      Onondaga: { city: [154, 205, 205], territory: [154, 205, 205] },
-      Ormus: { city: [178, 178, 178], territory: [178, 178, 178] },
-      Oslo: { city: [166, 96, 51], territory: [166, 96, 51] },
-      Ouagadougou: { city: [196, 87, 255], territory: [196, 87, 255] },
-      Oviedo: { city: [70, 195, 212], territory: [70, 195, 212] },
-      'Pago Pago': { city: [217, 89, 0], territory: [217, 89, 0] },
-      Palatium: { city: [138, 0, 230], territory: [138, 0, 230] },
-      'Panama City': { city: [255, 255, 128], territory: [255, 255, 128] },
-      Perge: { city: [114, 162, 233], territory: [114, 162, 233] },
-      Prague: { city: [54, 102, 255], territory: [54, 102, 255] },
-      'Quebec City': { city: [54, 102, 255], territory: [54, 102, 255] },
-      Ragusa: { city: [0, 163, 181], territory: [0, 163, 181] },
-      Raqmu: { city: [100, 205, 107], territory: [100, 205, 107] },
-      Riga: { city: [18, 204, 245], territory: [18, 204, 245] },
-      'Rio De Janeiro': { city: [150, 222, 10], territory: [150, 222, 10] },
-      Salem: { city: [53, 84, 205], territory: [53, 84, 205] },
-      Samarkand: { city: [0, 56, 233], territory: [0, 56, 233] },
-      Segou: { city: [214, 145, 19], territory: [214, 145, 19] },
-      Seoul: { city: [65, 76, 230], territory: [65, 76, 230] },
-      Shanghai: { city: [0, 149, 82], territory: [0, 149, 82] },
-      Shedet: { city: [255, 252, 3], territory: [255, 252, 3] },
-      Sidon: { city: [172, 30, 185], territory: [172, 30, 185] },
-      Sigtuna: { city: [255, 255, 0], territory: [255, 255, 0] },
-      Singapore: { city: [255, 255, 128], territory: [255, 255, 128] },
-      Sofia: { city: [128, 255, 128], territory: [128, 255, 128] },
-      Sogut: { city: [247, 249, 200], territory: [247, 249, 200] },
-      Sokoto: { city: [0, 163, 181], territory: [0, 163, 181] },
-      Stockholm: { city: [255, 255, 0], territory: [255, 255, 0] },
-      Sydney: { city: [0, 56, 233], territory: [0, 56, 233] },
-      Trowulan: { city: [111, 211, 218], territory: [111, 211, 218] },
-      Tyre: { city: [125, 224, 0], territory: [125, 224, 0] },
-      Ur: { city: [178, 153, 255], territory: [178, 153, 255] },
-      Utica: { city: [205, 205, 205], territory: [205, 205, 205] },
-      Valletta: { city: [255, 255, 43], territory: [255, 255, 43] },
-      Vancouver: { city: [196, 87, 255], territory: [196, 87, 255] },
-      'Vatican City': { city: [255, 255, 128], territory: [255, 255, 128] },
-      Veligrad: { city: [57, 128, 52], territory: [57, 128, 52] },
-      Vienna: { city: [255, 174, 255], territory: [255, 174, 255] },
-      Vilnius: { city: [230, 166, 82], territory: [230, 166, 82] },
-      Wanggeom: { city: [65, 76, 230], territory: [65, 76, 230] },
-      Warsaw: { city: [230, 132, 134], territory: [230, 132, 134] },
-      Wellington: { city: [255, 217, 143], territory: [255, 217, 143] },
-      Winchester: { city: [176, 112, 107], territory: [176, 112, 107] },
-      Wittenberg: { city: [178, 153, 255], territory: [178, 153, 255] },
-      Yamatai: { city: [255, 255, 255], territory: [255, 255, 255] },
-      Yerevan: { city: [255, 217, 143], territory: [255, 217, 143] },
-      Zanzibar: { city: [128, 178, 255], territory: [128, 178, 255] },
-      Zurich: { city: [178, 178, 178], territory: [178, 178, 178] },
-      Zuunmod: { city: [255, 160, 64], territory: [255, 160, 64] },
   };
+  /**
+   * City-state names present in Vox Populi. Every one of them is drawn in the
+   * same neutral gray below so the major civilizations stay distinct.
+   */
+  const cityStateNames = [
+      'Abernethy', 'Aksum', 'Almaty', 'Antananarivo', 'Antwerp',
+      'Argos', 'Assur', 'Aztlan', 'Ban Chiang', 'Belgrade',
+      'Bogota', 'Bornu', 'Brandenburg', 'Bratislava', 'Brussels',
+      'Bucharest', 'Budapest', 'Buenos Aires', 'Bunkeya', 'Byblos',
+      'Cahokia', 'Cape Town', 'Colombo', 'Copenhagen', 'Djenne',
+      'Dorestad', 'Dublin', 'Ecbatana', 'Edinburgh', 'Enns',
+      'Eraclea', 'Florence', 'Geneva', 'Genoa', 'Hanoi',
+      'Harappa', 'Heidabir', 'Helsinki', 'Holmul', 'Hong Kong',
+      'Huari', 'Ife', 'Jakarta', 'Jerusalem', 'Kabul',
+      'Kathmandu', 'Kuala Lumpur', 'Kwa Bulawayo', 'Kyiv', 'Kyzyl',
+      'La Venta', 'Lhasa', 'Lisbon', 'Longcheng', 'Luba',
+      'Lutetia', 'Malacca', 'Manila', 'Marrakech', 'Mbanza Kongo',
+      'Melbourne', 'Milan', 'Mogadishu', 'Mombasa', 'Monaco',
+      'Msoura', 'Nippur', 'Novgorod', 'Okilis', 'Onondaga',
+      'Ormus', 'Oslo', 'Ouagadougou', 'Oviedo', 'Pago Pago',
+      'Palatium', 'Panama City', 'Perge', 'Prague', 'Quebec City',
+      'Ragusa', 'Raqmu', 'Riga', 'Rio De Janeiro', 'Salem',
+      'Samarkand', 'Segou', 'Seoul', 'Shanghai', 'Shedet',
+      'Sidon', 'Sigtuna', 'Singapore', 'Sofia', 'Sogut',
+      'Sokoto', 'Stockholm', 'Sydney', 'Trowulan', 'Tyre',
+      'Ur', 'Utica', 'Valletta', 'Vancouver', 'Vatican City',
+      'Veligrad', 'Vienna', 'Vilnius', 'Wanggeom', 'Warsaw',
+      'Wellington', 'Winchester', 'Wittenberg', 'Yamatai', 'Yerevan',
+      'Zanzibar', 'Zurich', 'Zuunmod',
+  ];
+  // One neutral gray for every city-state marker, border, and territory tint.
+  const cityStateColor = [136, 136, 136];
+  for (const name of cityStateNames) {
+      CivColors[name] = { city: cityStateColor, territory: cityStateColor };
+  }
+  const cityStateNameSet = new Set(cityStateNames);
+  /** True when the civilization is a city-state rather than a major power. */
+  function isCityState(civName) {
+      return cityStateNameSet.has(civName);
+  }
+  /** Perceived brightness of an RGB color on a 0-255 scale. */
+  function brightness(color) {
+      return 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2];
+  }
+  /**
+   * Color a civilization's name should use on the dark tooltip. Major powers
+   * paint it in their territory color, but when that color is too dark to read
+   * the brighter city color stands in. City-states keep the neutral gray.
+   */
+  function getCivTextColor(civName) {
+      const colors = getCivColors(civName);
+      if (!colors)
+          return null;
+      const { city, territory } = colors;
+      return brightness(territory) < 90 && brightness(city) > brightness(territory) ? city : territory;
+  }
   /**
    * Look up the color pair of a civilization by name
    */
@@ -381,7 +317,7 @@
           this.modelLine.textContent = this.annotation || '';
           this.modelLine.hidden = !this.annotation;
       }
-      /** Draw the civilization name in its border color with the city behind it. */
+      /** Draw the civilization name in a readable color with the city behind it. */
       renderOwner() {
           var _a;
           this.ownerLine.textContent = '';
@@ -391,9 +327,9 @@
           }
           this.ownerLine.hidden = false;
           const name = document.createElement('span');
-          const colors = getCivColors(this.info.owner);
-          if (colors)
-              name.style.color = `rgb(${colors.territory.join(',')})`;
+          const color = getCivTextColor(this.info.owner);
+          if (color)
+              name.style.color = `rgb(${color.join(',')})`;
           name.textContent = this.info.owner;
           this.ownerLine.appendChild(name);
           if (this.info.city) {
@@ -1222,7 +1158,9 @@
       }
       /**
        * Fill owned plots with the owning civilization's territory tint, lighter
-       * over water so coast and ocean remain recognizable.
+       * over water so coast and ocean remain recognizable. Major civilizations
+       * paint at a stronger alpha than the uniform gray of city-states so their
+       * land stays easy to pick out at a glance.
        */
       drawTerritory(tiles) {
           var _a;
@@ -1234,8 +1172,10 @@
                   continue;
               const color = ((_a = CivColors[state.owner]) === null || _a === void 0 ? void 0 : _a.territory) || [80, 80, 80];
               const water = tile.type === TileType.Coast || tile.type === TileType.Ocean;
+              const major = !isCityState(state.owner);
+              const alpha = major ? (water ? 0.32 : 0.45) : (water ? 0.2 : 0.3);
               this.drawHex(tile, () => {
-                  this.context.fillStyle = `rgba(${color.join(',')}, ${water ? 0.2 : 0.3})`;
+                  this.context.fillStyle = `rgba(${color.join(',')}, ${alpha})`;
                   this.context.fill();
               });
           }
