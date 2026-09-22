@@ -397,17 +397,22 @@ function decodePlotRecord(body: Uint8Array, view: DataView, s: number, layout: P
  * count tables. The header size and record prefix depend on the game
  * version, and the table size depends on the mod set, so every supported
  * layout tries every possible table size until a plausible head chains
- * cleanly across the whole map, newest layout first. When no candidate
- * covers the map, the best partial walk is returned and the caller decides
- * through the coverage gate whether the terrain is trustworthy
+ * cleanly across the whole map, newest layout first. Several candidates
+ * can cover the map, so the walk that owns as many plots as the map header
+ * claims wins, with a plausible river count on its first record as the
+ * tie breaker. When no candidate covers the map, the best partial walk is
+ * returned and the caller decides through the coverage gate whether the
+ * terrain is trustworthy
  * @param body The decompressed game state
  * @param mapPos Byte offset of the map section header
  * @param width Map width in plots
  * @param height Map height in plots
+ * @param ownedPlots The owned plot count from the map header, when known,
+ * used to single out the true first record among full-coverage candidates
  * @returns The terrain tiles, null where a record failed to decode, plus
  * walk statistics and the layout name the walk succeeded with
  */
-export function extractMapTerrain(body: Uint8Array, mapPos: number, width: number, height: number): MapTerrainResult {
+export function extractMapTerrain(body: Uint8Array, mapPos: number, width: number, height: number, ownedPlots?: number): MapTerrainResult {
   const numPlots = width * height;
   const empty: (MapTerrainTile | null)[] = new Array(numPlots).fill(null);
   const stats: MapTerrainStats = { arrayStart: -1, slotsFilled: 0, riverPlots: 0 };
@@ -460,20 +465,52 @@ export function extractMapTerrain(body: Uint8Array, mapPos: number, width: numbe
     return true;
   };
 
-  // Candidates are tried from the largest table size downward. A start inside
-  // the resource tables can only chain when a table word happens to mimic a
-  // river count and lands the field base on the real first record, so the
-  // deepest candidate that chains is the true first record
+  // Aliases of the true start chain just as cleanly. A start inside the
+  // resource tables decodes its fixed fields straight off the real first
+  // record when a table word mimics a river count and pulls the base onto
+  // it, which misreads that one record's river list. A start at a later
+  // record boundary (possible when the early records are a multiple of the
+  // 8 byte probe step long) walks the true records shifted by one slot and
+  // finishes on one extra pseudo record past the array. So every candidate
+  // that covers the map is collected, then the walk owning exactly as many
+  // plots as the map header claims wins, preferring a first record with a
+  // plausible river count, newest layout and largest table first
+  const ownedCount = (walked: MapTerrainResult): number => {
+    let n = 0;
+    for (const tile of walked.tiles) {
+      if (tile && tile.owner >= 0) n++;
+    }
+    return n;
+  };
+  const plausibleHead = (start: number, layout: PlotLayout): boolean => {
+    const word = view.getUint32(start + layout.riverCountOffset, true);
+    return word === 6 || word === 0xFFFFFFFF;
+  };
+
   let best: MapTerrainResult | null = null;
+  const full: { walked: MapTerrainResult; start: number; layout: PlotLayout }[] = [];
   for (const layout of PLOT_LAYOUTS) {
     for (let resources = MAP_MAX_RESOURCE_TYPES; resources >= 1; resources--) {
       const candidate = mapPos + layout.mapHeaderSize + resources * MAP_RESOURCE_ENTRY_SIZE;
       if (candidate + layout.minRecordSize > body.length) continue;
       if (!looksLikeRecord(candidate, layout)) continue;
       const walked = walk(candidate, layout);
-      if (walked.stats.slotsFilled === numPlots) return walked;
+      if (walked.stats.slotsFilled === numPlots) {
+        full.push({ walked, start: candidate, layout });
+        continue;
+      }
       if (!best || walked.stats.slotsFilled > best.stats.slotsFilled) best = walked;
     }
+  }
+  if (full.length > 0) {
+    let finalists = full;
+    if (ownedPlots !== undefined) {
+      const ownersAgree = full.filter(f => ownedCount(f.walked) === ownedPlots);
+      if (ownersAgree.length > 0) finalists = ownersAgree;
+    }
+    const headsPlausible = finalists.filter(f => plausibleHead(f.start, f.layout));
+    if (headsPlausible.length > 0) finalists = headsPlausible;
+    return finalists[0].walked;
   }
   return best ?? { tiles: empty, stats, layoutName: null };
 }
@@ -860,7 +897,8 @@ export class SaveParser extends BaseParser {
     // Stage 9: decode the plot records for terrain when the map section was found
     let terrain: MapTerrainResult | null = null;
     if (mapDims.mapPos >= 0 && mapDims.width > 0 && mapDims.height > 0) {
-      terrain = extractMapTerrain(this.decompressed, mapDims.mapPos, mapDims.width, mapDims.height);
+      terrain = extractMapTerrain(this.decompressed, mapDims.mapPos, mapDims.width, mapDims.height,
+        mapDims.header ? mapDims.header.ownedPlots : undefined);
       const coverage = terrain.stats.slotsFilled / (mapDims.width * mapDims.height);
       this.diagnostics.terrainCoverage = coverage;
       this.diagnostics.terrainTrusted = terrain.stats.slotsFilled;
