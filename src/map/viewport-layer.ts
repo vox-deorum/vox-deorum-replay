@@ -132,6 +132,8 @@ export class ViewportLayer extends L.Layer {
 	private highlightedCivs = new Set<string>();
 	private readonly assetLoadHandlers: Array<{ image: HTMLImageElement; handler: () => void }> = [];
 	private pendingGeography = false;
+	private roughTiles: Tile[] = [];
+	private visibleBounds = { minX: -Infinity, maxX: Infinity, minY: -Infinity, maxY: Infinity };
 	private zoomAnimating = false;
 	private paintedView: { center: any; zoom: number; width: number; height: number } | null = null;
 	/** Request a redraw when Leaflet changes the camera. */
@@ -326,8 +328,9 @@ export class ViewportLayer extends L.Layer {
 		const right = this.screenPoint({ x: center.x + hexWidth / 2, y: center.y });
 		this.lod = nextMapLod(Math.abs(right.x - left.x), this.lod);
 		const visibleChunks = this.visibleChunks();
-		const visibleTiles = visibleChunks.reduce((all, chunk) => all.concat(chunk.tiles), [] as Tile[]);
+		const visibleTiles = visibleChunks.reduce((all, chunk) => all.concat(chunk.tiles), [] as Tile[]).concat(this.roughTiles);
 		this.drawGeography(visibleChunks);
+		this.drawRoughTerrain();
 		this.drawTerritory(visibleTiles);
 		this.drawRivers();
 		this.drawBorders();
@@ -341,8 +344,9 @@ export class ViewportLayer extends L.Layer {
 	 * Return raster chunks intersecting the camera bounds at a quantized scale.
 	 */
 	private visibleChunks(): GeographyChunk[] {
-		if (!this.map) return [];
 		this.pendingGeography = false;
+		this.roughTiles = [];
+		if (!this.map) return [];
 		const deadline = performance.now() + geographyBuildBudgetMs;
 		const size = this.map.getSize();
 		const upperLeft = this.worldFromLatLng(this.map.containerPointToLatLng([0, 0]));
@@ -351,6 +355,8 @@ export class ViewportLayer extends L.Layer {
 		const maxX = Math.max(upperLeft.x, lowerRight.x) + hexWidth;
 		const minY = Math.min(upperLeft.y, lowerRight.y) - hexWidth;
 		const maxY = Math.max(upperLeft.y, lowerRight.y) + hexWidth;
+		const strokePad = 8 / this.worldScale();
+		this.visibleBounds = { minX: minX - strokePad, maxX: maxX + strokePad, minY: minY - strokePad, maxY: maxY + strokePad };
 		const minRow = Math.max(0, Math.floor(minY / 1.5) - 1);
 		const maxRow = Math.min(this.tiles.length - 1, Math.ceil(maxY / 1.5) + 1);
 		const staticVisibility = `${this.layers.terrain.visible}:${this.layers.relief.visible}:${this.layers.features.visible}`;
@@ -372,7 +378,10 @@ export class ViewportLayer extends L.Layer {
 					chunk = this.staticCache.findFallback(chunkX, chunkY, staticVisibility);
 					this.pendingGeography = true;
 				}
-				if (!chunk) continue;
+				if (!chunk) {
+					this.collectRoughTiles(chunkX, chunkY);
+					continue;
+				}
 				result.push(chunk);
 			}
 		}
@@ -390,6 +399,42 @@ export class ViewportLayer extends L.Layer {
 			const factor = currentScale / chunk.scale;
 			this.context.drawImage(chunk.canvas, origin.x, origin.y, chunk.canvas.width * factor, chunk.canvas.height * factor);
 		}
+	}
+
+	/**
+	 * Gather the tiles of a chunk whose raster is still unbuilt so the frame
+	 * can tint them instead of leaving a blank hole until the chunk lands.
+	 */
+	private collectRoughTiles(chunkX: number, chunkY: number): void {
+		const startY = chunkY * geographyChunkSize;
+		const startX = chunkX * geographyChunkSize;
+		for (let y = startY; y < Math.min(startY + geographyChunkSize, this.tiles.length); y++) {
+			for (let x = startX; x < Math.min(startX + geographyChunkSize, this.tiles[y].length); x++) this.roughTiles.push(this.tiles[y][x]);
+		}
+	}
+
+	/**
+	 * Fill plots without a cached raster with flat terrain colors. This costs
+	 * one polygon fill per hex and keeps panning over warm chunks from
+	 * flashing empty background between the rough frame and the finished one.
+	 */
+	private drawRoughTerrain(): void {
+		if (!this.context || !this.layers.terrain.visible) return;
+		for (const tile of this.roughTiles) {
+			this.drawHex(tile, () => {
+				this.context!.fillStyle = terrainColors[tile.type] || '#777';
+				this.context!.fill();
+			});
+		}
+	}
+
+	/**
+	 * Report whether a world-space segment can touch the padded camera bounds.
+	 */
+	private segmentVisible(points: [WorldPoint, WorldPoint]): boolean {
+		const bounds = this.visibleBounds;
+		return Math.max(points[0].x, points[1].x) >= bounds.minX && Math.min(points[0].x, points[1].x) <= bounds.maxX &&
+			Math.max(points[0].y, points[1].y) >= bounds.minY && Math.min(points[0].y, points[1].y) <= bounds.maxY;
 	}
 
 	/**
@@ -533,8 +578,8 @@ export class ViewportLayer extends L.Layer {
 		this.context.lineCap = 'round';
 		this.context.lineJoin = 'round';
 		for (const river of this.rivers) {
-			this.strokeSegment(river.points);
-			if (river.seamPoints) this.strokeSegment(river.seamPoints);
+			if (this.segmentVisible(river.points)) this.strokeSegment(river.points);
+			if (river.seamPoints && this.segmentVisible(river.seamPoints)) this.strokeSegment(river.seamPoints);
 		}
 		this.context.restore();
 	}
@@ -553,6 +598,7 @@ export class ViewportLayer extends L.Layer {
 		this.context.lineCap = 'round';
 		for (const segments of this.borderCache.values()) {
 			for (const segment of segments) {
+				if (!this.segmentVisible(segment.points)) continue;
 				const color = this.highlightedCivs.has(segment.owner)
 					? [255, 235, 59]
 					: CivColors[segment.owner]?.territory || [120, 120, 120];
