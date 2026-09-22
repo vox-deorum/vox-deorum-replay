@@ -11,6 +11,7 @@ import {
 	buildRiverEdges,
 	directions,
 	edgeCorners,
+	eventHexKeys,
 	hexCenter,
 	hexCorners,
 	hexRadius,
@@ -135,6 +136,7 @@ export class ViewportLayer extends L.Layer {
 	private readonly borderCache = new Map<string, BorderSegment[]>();
 	private cityMarkers: CityMarker[] = [];
 	private eventHexes = new Set<string>();
+	private previewHexes = new Set<string>();
 	private selectedHex: string | null = null;
 	private hoveredHex: string | null = null;
 	private highlightedCivs = new Set<string>();
@@ -275,6 +277,15 @@ export class ViewportLayer extends L.Layer {
 	}
 
 	/**
+	 * Outline the plots of a single hovered or focused event, replacing any
+	 * previous preview. These sit above the per-turn event dashes.
+	 */
+	setPreviewHexes(keys: string[]): void {
+		this.previewHexes = new Set(keys);
+		this.scheduleRender();
+	}
+
+	/**
 	 * Change highlighted political borders without creating another layer.
 	 */
 	setHighlightedCivs(civNames: string[]): void {
@@ -290,6 +301,7 @@ export class ViewportLayer extends L.Layer {
 		this.hoveredHex = null;
 		this.highlightedCivs.clear();
 		this.eventHexes.clear();
+		this.previewHexes.clear();
 		this.scheduleRender();
 	}
 
@@ -312,6 +324,14 @@ export class ViewportLayer extends L.Layer {
 	 */
 	pickLatLng(latLng: any): { x: number; y: number } | null {
 		return pickHex(this.worldFromLatLng(latLng), this.geometry);
+	}
+
+	/**
+	 * Return the camera zoom at which one hex spans at least the given number
+	 * of CSS pixels, so callers can ask for a legible level of detail.
+	 */
+	zoomForHexPixels(targetPixels: number): number {
+		return Math.max(0, Math.log2(targetPixels / hexWidth));
 	}
 
 	/**
@@ -674,6 +694,9 @@ export class ViewportLayer extends L.Layer {
 		if (this.layers.selection.visible && this.selectedHex) {
 			this.drawHighlightRegion(new Set([this.selectedHex]), this.lod === 'world' ? 1 : 3, []);
 		}
+		if (this.previewHexes.size > 0) {
+			this.drawHighlightRegion(this.previewHexes, this.lod === 'world' ? 1.2 : 3.5, [], '#ffb300');
+		}
 	}
 
 	/**
@@ -768,10 +791,7 @@ export class ViewportLayer extends L.Layer {
 	 */
 	private eventKeysFor(events: GameEvent[]): Set<string> {
 		const keys = new Set<string>();
-		for (const event of events) {
-			for (const tile of event.tiles || []) keys.add(tileKey(tile));
-			if (event.x !== undefined && event.y !== undefined) keys.add(`${event.x},${event.y}`);
-		}
+		for (const event of events) for (const key of eventHexKeys(event)) keys.add(key);
 		return keys;
 	}
 

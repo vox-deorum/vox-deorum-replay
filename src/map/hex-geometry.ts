@@ -4,7 +4,7 @@
  * these helpers so a plot has one stable location everywhere.
  */
 
-import { TileType } from '../replay/types';
+import { GameEvent, TileType } from '../replay/types';
 
 export type HexDirection = 'NE' | 'E' | 'SE' | 'SW' | 'W' | 'NW';
 
@@ -59,6 +59,17 @@ export function oppositeDirection(direction: HexDirection): HexDirection {
  */
 export function tileKey(tile: HexCoordinate): string {
 	return `${tile.x},${tile.y}`;
+}
+
+/**
+ * The distinct plot keys an event points at, gathered from its tile list and
+ * its single-tile coordinate, whichever the event carries.
+ */
+export function eventHexKeys(event: GameEvent): string[] {
+	const keys = new Set<string>();
+	for (const tile of event.tiles || []) keys.add(tileKey(tile));
+	if (event.x !== undefined && event.y !== undefined) keys.add(`${event.x},${event.y}`);
+	return Array.from(keys);
 }
 
 /**

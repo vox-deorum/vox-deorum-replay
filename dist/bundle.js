@@ -380,6 +380,18 @@
       return `${tile.x},${tile.y}`;
   }
   /**
+   * The distinct plot keys an event points at, gathered from its tile list and
+   * its single-tile coordinate, whichever the event carries.
+   */
+  function eventHexKeys(event) {
+      const keys = new Set();
+      for (const tile of event.tiles || [])
+          keys.add(tileKey(tile));
+      if (event.x !== undefined && event.y !== undefined)
+          keys.add(`${event.x},${event.y}`);
+      return Array.from(keys);
+  }
+  /**
    * Return the center of a pointy hex in the flat shared map coordinate system.
    */
   function hexCenter(tile) {
@@ -767,6 +779,7 @@
           this.borderCache = new Map();
           this.cityMarkers = [];
           this.eventHexes = new Set();
+          this.previewHexes = new Set();
           this.selectedHex = null;
           this.hoveredHex = null;
           this.highlightedCivs = new Set();
@@ -902,6 +915,14 @@
           this.scheduleRender();
       }
       /**
+       * Outline the plots of a single hovered or focused event, replacing any
+       * previous preview. These sit above the per-turn event dashes.
+       */
+      setPreviewHexes(keys) {
+          this.previewHexes = new Set(keys);
+          this.scheduleRender();
+      }
+      /**
        * Change highlighted political borders without creating another layer.
        */
       setHighlightedCivs(civNames) {
@@ -916,6 +937,7 @@
           this.hoveredHex = null;
           this.highlightedCivs.clear();
           this.eventHexes.clear();
+          this.previewHexes.clear();
           this.scheduleRender();
       }
       /**
@@ -935,6 +957,13 @@
        */
       pickLatLng(latLng) {
           return pickHex(this.worldFromLatLng(latLng), this.geometry);
+      }
+      /**
+       * Return the camera zoom at which one hex spans at least the given number
+       * of CSS pixels, so callers can ask for a legible level of detail.
+       */
+      zoomForHexPixels(targetPixels) {
+          return Math.max(0, Math.log2(targetPixels / hexWidth));
       }
       /**
        * Request one animation frame. Multiple camera and timeline updates collapse
@@ -1309,6 +1338,9 @@
           if (this.layers.selection.visible && this.selectedHex) {
               this.drawHighlightRegion(new Set([this.selectedHex]), this.lod === 'world' ? 1 : 3, []);
           }
+          if (this.previewHexes.size > 0) {
+              this.drawHighlightRegion(this.previewHexes, this.lod === 'world' ? 1.2 : 3.5, [], '#ffb300');
+          }
       }
       /**
        * Outline the boundary of a set of highlighted hexes with one shared style.
@@ -1413,12 +1445,9 @@
        */
       eventKeysFor(events) {
           const keys = new Set();
-          for (const event of events) {
-              for (const tile of event.tiles || [])
-                  keys.add(tileKey(tile));
-              if (event.x !== undefined && event.y !== undefined)
-                  keys.add(`${event.x},${event.y}`);
-          }
+          for (const event of events)
+              for (const key of eventHexKeys(event))
+                  keys.add(key);
           return keys;
       }
       /**
@@ -1661,6 +1690,44 @@
       highlightHexes(hexKeys) {
           var _a;
           (_a = this.renderer) === null || _a === void 0 ? void 0 : _a.setSelectedHex(hexKeys[0] || null);
+      }
+      /**
+       * Outline the plots touched by a single event, replacing any preview. This
+       * backs the event log hover so a player can see where something happened.
+       */
+      previewEventHexes(event) {
+          var _a;
+          (_a = this.renderer) === null || _a === void 0 ? void 0 : _a.setPreviewHexes(event ? eventHexKeys(event) : []);
+      }
+      /**
+       * Center the map on the plots touched by an event. A single plot is framed
+       * at a legible zoom, raising the level only when the camera is too far out
+       * to make the cell out. A spread of plots fits its bounds instead.
+       */
+      focusEventHexes(event) {
+          const keys = eventHexKeys(event);
+          if (!this.renderer || !this.session || keys.length === 0)
+              return;
+          const tiles = this.session.replay.tiles;
+          const centers = keys
+              .map(key => {
+              var _a;
+              const [x, y] = key.split(',').map(Number);
+              const tile = (_a = tiles[y]) === null || _a === void 0 ? void 0 : _a[x];
+              return tile ? hexCenter(tile) : null;
+          })
+              .filter((point) => point !== null);
+          if (centers.length === 0)
+              return;
+          if (centers.length > 1) {
+              const bounds = L.latLngBounds(centers.map(point => L.latLng(point.y, point.x)));
+              this.map.fitBounds(bounds, { padding: [60, 60], maxZoom: 5, animate: true });
+              return;
+          }
+          const [center] = centers;
+          const legible = this.renderer.zoomForHexPixels(16);
+          const zoom = Math.max(this.map.getZoom(), legible);
+          this.map.setView(L.latLng(center.y, center.x), zoom, { animate: true });
       }
       /**
        * Preserve legacy additive highlighting semantics for a single selection.
@@ -2452,7 +2519,7 @@
    * Renders the session's events and filters them by type
    */
   class EventLog {
-      constructor(session, annotations = {}) {
+      constructor(session, annotations = {}, mapLink = null) {
           this.types = new Set();
           // Associations between DOM elements and their event data
           this.elementToEvent = new WeakMap();
@@ -2470,6 +2537,7 @@
           this.events = session.replay.events;
           this.replay = session.replay;
           this.annotations = annotations;
+          this.mapLink = mapLink;
           this.buildFilter();
           this.renderEvents();
           // Follow the session: every turn change scrolls and activates the log
@@ -2632,6 +2700,14 @@
           // Apply the current filter
           if (!this.types.has(event.type)) {
               msg.classList.add('hidden');
+          }
+          // Events that point at map plots become clickable and preview on hover
+          if (this.mapLink && eventHexKeys(event).length > 0) {
+              msg.classList.add('locatable');
+              msg.title = 'Show this event on the map';
+              msg.addEventListener('mouseenter', () => { var _a; return (_a = this.mapLink) === null || _a === void 0 ? void 0 : _a.previewEventHexes(event); });
+              msg.addEventListener('mouseleave', () => { var _a; return (_a = this.mapLink) === null || _a === void 0 ? void 0 : _a.previewEventHexes(null); });
+              msg.addEventListener('click', () => { var _a; return (_a = this.mapLink) === null || _a === void 0 ? void 0 : _a.focusEventHexes(event); });
           }
           return msg;
       }
@@ -6411,8 +6487,16 @@
       initializeUIComponents(annotations) {
           if (!this.session)
               return;
-          // The event log, with the address bar annotations
-          this.eventLog = new EventLog(this.session, annotations);
+          // The event log, with the address bar annotations, linked to the map so
+          // hovering an entry previews its plots and clicking one centers on them
+          // and reveals the map when a narrow screen still shows the log
+          this.eventLog = new EventLog(this.session, annotations, {
+              previewEventHexes: event => this.map.previewEventHexes(event),
+              focusEventHexes: event => {
+                  this.map.focusEventHexes(event);
+                  this.setView('map');
+              }
+          });
           // Map layers and the layers panel that toggles them, with the
           // annotations so plot tooltips can name the model behind an owner
           this.map.initLayers(this.session, annotations);

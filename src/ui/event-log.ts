@@ -8,9 +8,16 @@
 import { GameEvent, EventType } from '../replay/types';
 import { Replay } from '../replay/replay';
 import { GameSession } from '../replay/session';
+import { eventHexKeys } from '../map/hex-geometry';
 import { parseStrategyEvent, renderStrategyEvent } from './utils/strategy-parser';
 import { formatGameText, hasGameMarkup } from './utils/text-formatter';
 import { CivAnnotations, annotationFor } from './annotations';
+
+// The part of the map the log uses to show where an event happened
+export interface EventMapLink {
+	previewEventHexes(event: GameEvent | null): void;
+	focusEventHexes(event: GameEvent): void;
+}
 
 // One entry in the event type filter: the type, its label, and its icon
 interface FilterableType {
@@ -52,6 +59,7 @@ export class EventLog {
 	private readonly events: GameEvent[];
 	private readonly replay: Replay;
 	private readonly annotations: CivAnnotations;
+	private readonly mapLink: EventMapLink | null;
 	private readonly filterPanel: HTMLElement;
 	private readonly filterDetails: HTMLDetailsElement;
 	private readonly filterCount: HTMLElement;
@@ -70,7 +78,7 @@ export class EventLog {
 	// Closes the filter dropdown on outside clicks
 	private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
 
-	constructor(session: GameSession, annotations: CivAnnotations = {}) {
+	constructor(session: GameSession, annotations: CivAnnotations = {}, mapLink: EventMapLink | null = null) {
 		this.messagesEl = document.getElementById('logMessages');
 		this.filterPanel = document.getElementById('filterPanel');
 		this.filterDetails = document.getElementById('eventsFilter') as HTMLDetailsElement;
@@ -78,6 +86,7 @@ export class EventLog {
 		this.events = session.replay.events;
 		this.replay = session.replay;
 		this.annotations = annotations;
+		this.mapLink = mapLink;
 
 		this.buildFilter();
 		this.renderEvents();
@@ -261,6 +270,15 @@ export class EventLog {
 		// Apply the current filter
 		if (!this.types.has(event.type)) {
 			msg.classList.add('hidden');
+		}
+
+		// Events that point at map plots become clickable and preview on hover
+		if (this.mapLink && eventHexKeys(event).length > 0) {
+			msg.classList.add('locatable');
+			msg.title = 'Show this event on the map';
+			msg.addEventListener('mouseenter', () => this.mapLink?.previewEventHexes(event));
+			msg.addEventListener('mouseleave', () => this.mapLink?.previewEventHexes(null));
+			msg.addEventListener('click', () => this.mapLink?.focusEventHexes(event));
 		}
 
 		return msg;

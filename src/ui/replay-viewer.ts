@@ -473,8 +473,16 @@ export class ReplayViewer {
 	private initializeUIComponents(annotations: CivAnnotations): void {
 		if (!this.session) return;
 
-		// The event log, with the address bar annotations
-		this.eventLog = new EventLog(this.session, annotations);
+		// The event log, with the address bar annotations, linked to the map so
+		// hovering an entry previews its plots and clicking one centers on them
+		// and reveals the map when a narrow screen still shows the log
+		this.eventLog = new EventLog(this.session, annotations, {
+			previewEventHexes: event => this.map.previewEventHexes(event),
+			focusEventHexes: event => {
+				this.map.focusEventHexes(event);
+				this.setView('map');
+			}
+		});
 
 		// Map layers and the layers panel that toggles them, with the
 		// annotations so plot tooltips can name the model behind an owner

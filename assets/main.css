@@ -548,6 +548,11 @@ summary::-webkit-details-marker {
 	background: linear-gradient(to bottom, var(--teal) 0%, #35746c 100%);
 }
 
+/* Entries that point at map plots invite the click */
+.message.locatable {
+	cursor: pointer;
+}
+
 .message.hidden {
 	display: none;
 }
