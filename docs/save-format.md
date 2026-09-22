@@ -40,14 +40,14 @@ A save taken before the game was won carries no result at all, so such a save ca
 
 ## Map section
 
-- A 47 byte header: width, height, land plot count, owned plot count, natural wonder count, top and bottom latitude (all int32), wrapX and wrapY flags, a 16 byte map GUID, and a generated flag. The parser reads all of it except the GUID and exposes it as the map header; the wrap flags tell Stage 4 whether wrapped panning applies. The example maps wrap horizontally and not vertically.
+- A 47 byte header: width, height, land plot count, owned plot count, natural wonder count, top and bottom latitude (all int32), wrapX and wrapY flags, a 16 byte map GUID, and a generated flag. The parser reads all of it except the GUID and exposes it as the map header; the wrap flags tell Stage 4 whether wrapped panning applies. The example maps wrap horizontally and not vertically. Saves older than July 2025 have no generated flag byte and their header is 46 bytes.
 - Two resource count tables, one int32 per resource type each. The number of resource types depends on the mod set, 60 in the example games, so both tables together take 480 bytes there.
 - The plot records, one per plot, written row by row: height rows of width records, row major.
 - Behind the plots: the area, landmass, continent, and river lists, then an unused AI map hints value. The parser stops after the plot array and does not read these. Each list is a count followed by records. An area record holds counters, boundary edges, water and mountain flags, and nine sparse per player or per resource tables. A landmass record holds an id, tile count, centroid, water flag, continent type, and area ids. A continent record holds an id, tile count, centroid, and land flag. A river record holds only an id and the list of plot indices the river flows through: 65 rivers in the example games, of which 64 appear on plot edges.
 
 ## Plot record layout
 
-The record layout follows `CvPlot::Serialize` in `CvPlot.cpp` exactly. In order:
+The record layout follows `CvPlot::Serialize` in `CvPlot.cpp` exactly. The game changed this layout across versions, so the parser keeps a descriptor per generation (see the `PlotLayout` values in `src/parsers/save-parser.ts`) and autodetects which one a save uses (below). The descriptions here are the current generation. In order:
 
 - A prefix of small counters: area, ownership, improvement, and upgrade durations (int16), five int8 counters (among them the resource count of the plot), landmass and continent (int16).
 - The river id list: a count word, then one int32 river id per hex direction. The count is always 6, because the game fills all six directions with -1 for edges without a river; the parser additionally accepts the all ones value as an empty list, which the writer never produces.
@@ -74,9 +74,11 @@ Replay files store no river data. The parser attaches the river id array to ever
 
 ## How the parser reads the terrain
 
-`extractMapTerrain` in `src/parsers/save-parser.ts` decodes records structurally, no scanning or heuristics: it reads the exact layout above and stops the moment any count word looks implausible.
+`extractMapTerrain` in `src/parsers/save-parser.ts` decodes records structurally, no scanning or heuristics: it reads the exact layout and stops the moment any count word looks implausible.
 
-The first record sits behind the resource tables, whose size depends on the mod set. The parser tries every possible table size from the largest down and accepts the first candidate that decodes as a plausible terrain head and chains cleanly across the whole map. Scanning downward matters: table bytes can masquerade as a record head when a resource count happens to mimic a river count and shifts the field base onto the real record, but such an alias always sits before the true start, so the deepest candidate that chains is the real first record.
+The first record sits behind the resource tables, whose size depends on the mod set, and the table base depends on the map header size, which depends on the game version. So the parser probes its layout descriptors, newest first. Each layout tries every possible table size from the largest down and accepts the first candidate that decodes as a plausible terrain head and chains cleanly across the whole map; the candidate that covers the map wins and the result carries the layout name for diagnostics. Scanning downward matters: table bytes can masquerade as a record head when a resource count happens to mimic a river count and shifts the field base onto the real record, but such an alias always sits before the true start, so the deepest candidate that chains is the real first record.
+
+The probed generations are the current layout, and the layout used between the May 2024 river id list and the July 2025 continent field (the `temp/arabia.Civ5Save` era). The older one has a 46 byte map header with no generated flag, a two byte shorter plot prefix with no continent int16 so the river count word sits at offset 15, and four int8 experience counters instead of five, which shifts every field before the tail one byte toward the record start. Its closing fields changed twice inside the window: the spawned resource pair arrived in August 2024 and the trade route flag grew from a byte to a word in March 2025, so the three observed closing sizes (24, 28, 31) are probed as separate descriptors, newest first. Saves from before May 2024 differ too much to fit either generation; they simply fail the walk and fall through the coverage gate.
 
 A coverage gate protects against saves from other game versions: if the walk decodes fewer than 90 percent of the plots, the terrain is dropped and the map renders blank hexes instead of wrong terrain, with a warning in the console. Cities, borders, and event highlights keep working regardless.
 

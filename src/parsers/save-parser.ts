@@ -158,10 +158,15 @@ export interface MapTerrainStats {
   riverPlots: number;
 }
 
+/** Which supported plot record layout generation a walk decoded, null when unknown */
+export type PlotLayoutName = 'current' | 'pre-continent';
+
 /** Terrain extraction result: one entry per plot, null when unknown */
 export interface MapTerrainResult {
   tiles: (MapTerrainTile | null)[];
   stats: MapTerrainStats;
+  /** The record layout the walk succeeded with, null when no layout matched */
+  layoutName: PlotLayoutName | null;
 }
 
 /** Dataset name prefix used for every replay stat series */
@@ -186,53 +191,94 @@ const MAX_PLAYER_SLOT = 63;
 
 /**
  * The plot record array of the map section, decoded with the exact
- * CvPlot::Serialize layout of the game DLL. The constants below describe one
- * record: a small counter prefix, the river id list, the terrain fields, a
- * per team visibility block, the revealed bits, and a tail of counted pieces
+ * CvPlot::Serialize layout of the game DLL. One record is a small counter
+ * prefix, the river id list, the terrain fields, a per team visibility
+ * block, the revealed bits, and a tail of counted pieces. The prefix and the
+ * map header in front of it changed across game versions, so every field up
+ * to the record tail is described by a layout descriptor and the first
+ * record search probes each layout in turn.
  */
 
-/** Size of the map header in front of the two resource count tables */
-const MAP_HEADER_SIZE = 47;
+/** Sizes and field positions of one plot record layout generation */
+interface PlotLayout {
+  /** Name surfaced in the terrain result, for diagnostics */
+  name: PlotLayoutName;
+  /** Size of the map header in front of the two resource count tables */
+  mapHeaderSize: number;
+  /** Offset of the river id list count word inside a plot record */
+  riverCountOffset: number;
+  /** Offsets behind the river id list, to the first byte of each field */
+  owner: number;
+  plotType: number;
+  terrain: number;
+  feature: number;
+  resource: number;
+  improvement: number;
+  route: number;
+  isCity: number;
+  /** Offset of the owning city pair: owner then city id, both int32 */
+  owningCity: number;
+  /**
+   * Distance from the end of the river id list to the river crossing byte of
+   * the record tail: the packed flag word, the counter and enum fields, the
+   * owning city pairs, the yields, the team block, and the revealed bits
+   */
+  tailStart: number;
+  /** Closing fields behind the unit list: continent, archaeology, trade route, build turn, spawned resource */
+  closingSize: number;
+  /** Length of the shortest possible plot record, every variable part empty */
+  minRecordSize: number;
+}
+
+/**
+ * Describe one layout from the pieces that actually changed across versions:
+ * the shortest record is the prefix plus the count word, the fixed middle
+ * up to the tail, the always present tail scalars and count words (one river
+ * crossing byte, one script flag, four size words), and the closing fields
+ */
+function makePlotLayout(name: PlotLayoutName, mapHeaderSize: number, riverCountOffset: number,
+  shift: number, tailStart: number, closingSize: number): PlotLayout {
+  return {
+    name, mapHeaderSize, riverCountOffset, closingSize,
+    owner: 7 + shift, plotType: 8 + shift, terrain: 9 + shift, feature: 10 + shift,
+    resource: 14 + shift, improvement: 18 + shift, route: 30 + shift,
+    isCity: 38 + shift, owningCity: 39 + shift, tailStart,
+    minRecordSize: riverCountOffset + 4 + tailStart + 18 + closingSize
+  };
+}
+
+/**
+ * Current layout: five int8 counters and the landmass plus continent int16
+ * pair before the river id list, and a trailing generated flag byte on the
+ * map header
+ */
+const CURRENT_PLOT_LAYOUT = makePlotLayout('current', 47, 17, 0, 1352, 31);
+
+/**
+ * Layouts of saves written between the 2024 river id list and the 2025
+ * continent field: the prefix lacks the continent int16 (so the river count
+ * word moves to offset 15), the save carries four int8 experience counters
+ * instead of five (shifting every field before the tail by one), and the map
+ * header has no generated flag byte. The closing fields changed twice inside
+ * that window: the spawned resource pair arrived in August 2024 and the
+ * trade route flag grew from a byte to a word in March 2025, so the probe
+ * walks the three observed closing sizes, newest first
+ */
+const PRE_CONTINENT_PLOT_LAYOUTS: PlotLayout[] = [
+  makePlotLayout('pre-continent', 46, 15, -1, 1351, 31),
+  makePlotLayout('pre-continent', 46, 15, -1, 1351, 28),
+  makePlotLayout('pre-continent', 46, 15, -1, 1351, 24)
+];
+
+/** Layouts the first record search probes, newest first */
+const PLOT_LAYOUTS: PlotLayout[] = [CURRENT_PLOT_LAYOUT, ...PRE_CONTINENT_PLOT_LAYOUTS];
+
 /** Both resource count tables together take four bytes per resource type */
 const MAP_RESOURCE_ENTRY_SIZE = 8;
 /** How many resource types the first record search tries at most */
 const MAP_MAX_RESOURCE_TYPES = 300;
-/** Length of the shortest possible plot record, every variable part empty */
-const PLOT_MIN_RECORD_SIZE = 1422;
-/** Offset of the river id list count word inside a plot record */
-const PLOT_RIVER_COUNT_OFFSET = 17;
 /** A plot holds one river id per hex direction and the list stays short */
 const PLOT_MAX_RIVERS = 64;
-/** Offset of the owner byte behind the river id list */
-const PLOT_OWNER_OFFSET = 7;
-/** Offset of the plot type byte behind the river id list */
-const PLOT_PLOT_TYPE_OFFSET = 8;
-/** Offset of the terrain type byte behind the river id list */
-const PLOT_TERRAIN_OFFSET = 9;
-/** Offset of the feature word behind the river id list, stored as a full enum */
-const PLOT_FEATURE_OFFSET = 10;
-/** Offset of the resource word behind the river id list, stored as a full enum */
-const PLOT_RESOURCE_OFFSET = 14;
-/** Offset of the improvement word behind the river id list, stored as a full enum */
-const PLOT_IMPROVEMENT_OFFSET = 18;
-/** Offset of the route byte behind the river id list */
-const PLOT_ROUTE_OFFSET = 30;
-/** Offset of the city flag byte behind the river id list */
-const PLOT_IS_CITY_OFFSET = 38;
-/** Offset of the owning city pair behind the river id list: owner then city id, both int32 */
-const PLOT_OWNING_CITY_OFFSET = 39;
-/** Size of the per team visibility block between the yields and the revealed bits */
-const PLOT_TEAM_BLOCK_SIZE = 1024;
-/** Size of the revealed bits array behind the team block */
-const PLOT_REVEALED_BITS_SIZE = 256;
-/**
- * Distance from the end of the river id list to the river crossing byte of
- * the record tail: the packed flag word, the counter and enum fields, the
- * owning city pairs, the yields, the team block, and the revealed bits
- */
-const PLOT_TAIL_START = 1352;
-/** Closing fields behind the unit list: continent, archaeology, trade route, build turn, spawned resource */
-const PLOT_CLOSING_FIELDS_SIZE = 31;
 /** A candidate head must chain into this many followers to count as the array start */
 const PLOT_TRIAL_RECORDS = 30;
 
@@ -268,38 +314,40 @@ interface PlotRecord {
  * @param body The decompressed game state
  * @param view Little endian view over the game state
  * @param s Record start
+ * @param layout Field positions of the record layout generation to decode with
  * @returns The record fields and the position of the next record, or null
  * when the bytes do not follow the layout
  */
-function decodePlotRecord(body: Uint8Array, view: DataView, s: number): PlotRecord | null {
-  if (s < 0 || s + PLOT_MIN_RECORD_SIZE > body.length) return null;
+function decodePlotRecord(body: Uint8Array, view: DataView, s: number, layout: PlotLayout): PlotRecord | null {
+  if (s < 0 || s + layout.minRecordSize > body.length) return null;
 
   // The river id list starts with a count word, the all ones value marks an
   // empty list, then comes one river id per hex direction
-  const riverWord = view.getUint32(s + PLOT_RIVER_COUNT_OFFSET, true);
+  const riverWord = view.getUint32(s + layout.riverCountOffset, true);
   if (riverWord !== 0xFFFFFFFF && riverWord > PLOT_MAX_RIVERS) return null;
   const riverCount = riverWord === 0xFFFFFFFF ? 0 : riverWord;
   const rivers: number[] = [];
+  const riverList = s + layout.riverCountOffset + 4;
   for (let i = 0; i < riverCount; i++) {
-    rivers.push(view.getInt32(s + 21 + i * 4, true));
+    rivers.push(view.getInt32(riverList + i * 4, true));
   }
 
   // Behind the river id list every field sits at a fixed offset
-  const base = s + 21 + riverCount * 4;
-  const owner = view.getInt8(base + PLOT_OWNER_OFFSET);
-  const plotType = view.getInt8(base + PLOT_PLOT_TYPE_OFFSET);
-  const terrain = view.getInt8(base + PLOT_TERRAIN_OFFSET);
-  const feature = view.getInt32(base + PLOT_FEATURE_OFFSET, true);
-  const resource = view.getInt32(base + PLOT_RESOURCE_OFFSET, true);
-  const improvement = view.getInt32(base + PLOT_IMPROVEMENT_OFFSET, true);
-  const route = view.getInt8(base + PLOT_ROUTE_OFFSET);
-  const isCity = body[base + PLOT_IS_CITY_OFFSET];
-  const owningCityOwner = view.getInt32(base + PLOT_OWNING_CITY_OFFSET, true);
-  const owningCityId = view.getInt32(base + PLOT_OWNING_CITY_OFFSET + 4, true);
+  const base = riverList + riverCount * 4;
+  const owner = view.getInt8(base + layout.owner);
+  const plotType = view.getInt8(base + layout.plotType);
+  const terrain = view.getInt8(base + layout.terrain);
+  const feature = view.getInt32(base + layout.feature, true);
+  const resource = view.getInt32(base + layout.resource, true);
+  const improvement = view.getInt32(base + layout.improvement, true);
+  const route = view.getInt8(base + layout.route);
+  const isCity = body[base + layout.isCity];
+  const owningCityOwner = view.getInt32(base + layout.owningCity, true);
+  const owningCityId = view.getInt32(base + layout.owningCity + 4, true);
 
   // The counted tail pieces. Script data exists only behind a flag byte,
   // the other pieces always carry their count word
-  let p = base + PLOT_TAIL_START;
+  let p = base + layout.tailStart;
   p += 1; // river crossing
   const scriptFlag = body[p];
   p += 1;
@@ -338,7 +386,7 @@ function decodePlotRecord(body: Uint8Array, view: DataView, s: number): PlotReco
   else if (unitCount <= 500) p += 4 + unitCount * 8;
   else return null;
 
-  p += PLOT_CLOSING_FIELDS_SIZE;
+  p += layout.closingSize;
   if (p > body.length) return null;
   return { end: p, plotType, terrain, feature, rivers, owner, resource, improvement, route, isCity, owningCityOwner, owningCityId };
 }
@@ -346,32 +394,34 @@ function decodePlotRecord(body: Uint8Array, view: DataView, s: number): PlotReco
 /**
  * Extract the map terrain by decoding the plot records of the map section.
  * The records sit row by row behind the map header and the two resource
- * count tables. The table size depends on the mod set, so the first record
- * is found by trying every possible table size until a plausible head chains
- * cleanly across the whole map. When no candidate covers the map, the best
- * partial walk is returned and the caller decides through the coverage gate
- * whether the terrain is trustworthy
+ * count tables. The header size and record prefix depend on the game
+ * version, and the table size depends on the mod set, so every supported
+ * layout tries every possible table size until a plausible head chains
+ * cleanly across the whole map, newest layout first. When no candidate
+ * covers the map, the best partial walk is returned and the caller decides
+ * through the coverage gate whether the terrain is trustworthy
  * @param body The decompressed game state
  * @param mapPos Byte offset of the map section header
  * @param width Map width in plots
  * @param height Map height in plots
- * @returns The terrain tiles, null where a record failed to decode, plus walk statistics
+ * @returns The terrain tiles, null where a record failed to decode, plus
+ * walk statistics and the layout name the walk succeeded with
  */
 export function extractMapTerrain(body: Uint8Array, mapPos: number, width: number, height: number): MapTerrainResult {
   const numPlots = width * height;
   const empty: (MapTerrainTile | null)[] = new Array(numPlots).fill(null);
   const stats: MapTerrainStats = { arrayStart: -1, slotsFilled: 0, riverPlots: 0 };
-  if (numPlots <= 0) return { tiles: empty, stats };
+  if (numPlots <= 0) return { tiles: empty, stats, layoutName: null };
   const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
 
   // Decode records from the given start until the map is full or a record
   // breaks the layout
-  const walk = (start: number): MapTerrainResult => {
+  const walk = (start: number, layout: PlotLayout): MapTerrainResult => {
     const tiles: (MapTerrainTile | null)[] = new Array(numPlots).fill(null);
     const walkStats: MapTerrainStats = { arrayStart: start, slotsFilled: 0, riverPlots: 0 };
     let p = start;
     for (let i = 0; i < numPlots; i++) {
-      const record = decodePlotRecord(body, view, p);
+      const record = decodePlotRecord(body, view, p, layout);
       if (!record) break;
       tiles[i] = {
         elevation: record.plotType,
@@ -390,20 +440,20 @@ export function extractMapTerrain(body: Uint8Array, mapPos: number, width: numbe
       walkStats.slotsFilled++;
       p = record.end;
     }
-    return { tiles, stats: walkStats };
+    return { tiles, stats: walkStats, layoutName: layout.name };
   };
 
   // A valid start decodes as a plausible terrain head and chains into
   // further records. Resource table bytes never survive both checks
-  const looksLikeRecord = (pos: number): boolean => {
-    const first = decodePlotRecord(body, view, pos);
+  const looksLikeRecord = (pos: number, layout: PlotLayout): boolean => {
+    const first = decodePlotRecord(body, view, pos, layout);
     if (!first) return false;
     if (first.plotType < 0 || first.plotType > 3) return false;
     if (first.terrain < 0 || first.terrain > 15) return false;
     if (first.feature < -1 || first.feature > 200) return false;
     let p = first.end;
     for (let i = 1; i < PLOT_TRIAL_RECORDS; i++) {
-      const record = decodePlotRecord(body, view, p);
+      const record = decodePlotRecord(body, view, p, layout);
       if (!record) return false;
       p = record.end;
     }
@@ -415,15 +465,17 @@ export function extractMapTerrain(body: Uint8Array, mapPos: number, width: numbe
   // river count and lands the field base on the real first record, so the
   // deepest candidate that chains is the true first record
   let best: MapTerrainResult | null = null;
-  for (let resources = MAP_MAX_RESOURCE_TYPES; resources >= 1; resources--) {
-    const candidate = mapPos + MAP_HEADER_SIZE + resources * MAP_RESOURCE_ENTRY_SIZE;
-    if (candidate + PLOT_MIN_RECORD_SIZE > body.length) continue;
-    if (!looksLikeRecord(candidate)) continue;
-    const walked = walk(candidate);
-    if (walked.stats.slotsFilled === numPlots) return walked;
-    if (!best || walked.stats.slotsFilled > best.stats.slotsFilled) best = walked;
+  for (const layout of PLOT_LAYOUTS) {
+    for (let resources = MAP_MAX_RESOURCE_TYPES; resources >= 1; resources--) {
+      const candidate = mapPos + layout.mapHeaderSize + resources * MAP_RESOURCE_ENTRY_SIZE;
+      if (candidate + layout.minRecordSize > body.length) continue;
+      if (!looksLikeRecord(candidate, layout)) continue;
+      const walked = walk(candidate, layout);
+      if (walked.stats.slotsFilled === numPlots) return walked;
+      if (!best || walked.stats.slotsFilled > best.stats.slotsFilled) best = walked;
+    }
   }
-  return best ?? { tiles: empty, stats };
+  return best ?? { tiles: empty, stats, layoutName: null };
 }
 
 /**
@@ -812,6 +864,15 @@ export class SaveParser extends BaseParser {
       const coverage = terrain.stats.slotsFilled / (mapDims.width * mapDims.height);
       this.diagnostics.terrainCoverage = coverage;
       this.diagnostics.terrainTrusted = terrain.stats.slotsFilled;
+
+      if (terrain.layoutName === 'pre-continent') {
+        // The map header of this generation has no generated flag byte, the
+        // header walk read the first resource table byte instead
+        console.log(`Older save detected: the plot records decode with the ${terrain.layoutName} layout`);
+        if (mapDims.header) {
+          mapDims.header.mapGenerated = false;
+        }
+      }
 
       // A save from a different game version can leave the walk short.
       // Only render terrain when the walk covered nearly the whole map,
@@ -1506,13 +1567,15 @@ export class SaveParser extends BaseParser {
     if (dbPos > 4) {
       const dbSize = view.getInt32(dbPos - 4, true);
       const mapPos = dbPos + dbSize;
-      if (dbSize > 0 && mapPos + MAP_HEADER_SIZE <= body.byteLength) {
+      if (dbSize > 0 && mapPos + CURRENT_PLOT_LAYOUT.mapHeaderSize <= body.byteLength) {
         state.seek(mapPos);
         const width = state.getInt32() & 0xffff;
         const height = state.getInt32() & 0xffff;
         if (this.validateMapDims(width, height, messages)) {
-          // The rest of the 47 byte header: plot counts, natural wonders,
-          // latitudes, wrap flags, a 16 byte GUID, and the generated flag
+          // The rest of the header: plot counts, natural wonders, latitudes,
+          // wrap flags, a 16 byte GUID, and the generated flag. Older saves
+          // have no generated flag byte; the terrain walk detects the layout
+          // and clears the value read here
           const landPlots = state.getInt32();
           const ownedPlots = state.getInt32();
           const numNaturalWonders = state.getInt32();
