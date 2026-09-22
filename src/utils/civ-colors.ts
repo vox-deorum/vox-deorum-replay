@@ -101,8 +101,10 @@ const cityStateNames = [
 	'Zanzibar', 'Zurich', 'Zuunmod',
 ];
 
-// One neutral gray for every city-state marker, border, and territory tint.
-const cityStateColor: RGB = [136, 136, 136];
+// One neutral color for every city-state marker, border, and territory tint.
+// A cool silver-blue keeps it apart from the gray mountain art it used to
+// vanish into, while still reading as the unaligned minor powers.
+const cityStateColor: RGB = [150, 165, 190];
 for (const name of cityStateNames) {
 	CivColors[name] = { city: cityStateColor, territory: cityStateColor };
 }

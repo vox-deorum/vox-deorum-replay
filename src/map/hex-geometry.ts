@@ -62,14 +62,39 @@ export function tileKey(tile: HexCoordinate): string {
 }
 
 /**
+ * True when a coordinate is a real plot. The save files mark locationless
+ * events (strategies and so on) with a sentinel tile at -1,-1, which is no
+ * place on the map.
+ */
+function isRealPlot(x: number, y: number): boolean {
+	return x >= 0 && y >= 0;
+}
+
+/**
  * The distinct plot keys an event points at, gathered from its tile list and
- * its single-tile coordinate, whichever the event carries.
+ * its single-tile coordinate, whichever the event carries, ignoring the
+ * -1,-1 sentinel the game writes for events that happen nowhere.
  */
 export function eventHexKeys(event: GameEvent): string[] {
 	const keys = new Set<string>();
-	for (const tile of event.tiles || []) keys.add(tileKey(tile));
-	if (event.x !== undefined && event.y !== undefined) keys.add(`${event.x},${event.y}`);
+	for (const tile of event.tiles || []) {
+		if (isRealPlot(tile.x, tile.y)) keys.add(tileKey(tile));
+	}
+	if (event.x !== undefined && event.y !== undefined && isRealPlot(event.x, event.y)) {
+		keys.add(`${event.x},${event.y}`);
+	}
 	return Array.from(keys);
+}
+
+/**
+ * The plots an event should point at on the map: the plots it names, or,
+ * when it carries no coordinates at all (diplomacy chatter, religion
+ * notices and so on), the capital plot of the civilization it belongs to.
+ */
+export function eventFocusHexKeys(event: GameEvent, capitalKey: string | null): string[] {
+	const keys = eventHexKeys(event);
+	if (keys.length || !capitalKey) return keys;
+	return [capitalKey];
 }
 
 /**

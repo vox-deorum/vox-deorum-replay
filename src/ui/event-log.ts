@@ -8,7 +8,7 @@
 import { GameEvent, EventType } from '../replay/types';
 import { Replay } from '../replay/replay';
 import { GameSession } from '../replay/session';
-import { eventHexKeys } from '../map/hex-geometry';
+import { eventFocusHexKeys } from '../map/hex-geometry';
 import { parseStrategyEvent, renderStrategyEvent } from './utils/strategy-parser';
 import { formatGameText, hasGameMarkup } from './utils/text-formatter';
 import { CivAnnotations, annotationFor } from './annotations';
@@ -272,8 +272,9 @@ export class EventLog {
 			msg.classList.add('hidden');
 		}
 
-		// Events that point at map plots become clickable and preview on hover
-		if (this.mapLink && eventHexKeys(event).length > 0) {
+		// Events that point at map plots become clickable and preview on hover.
+		// One without coordinates still lands on its civilization's capital
+		if (this.mapLink && eventFocusHexKeys(event, this.replay.getCapitalKey(event.civId)).length > 0) {
 			msg.classList.add('locatable');
 			msg.title = 'Show this event on the map';
 			msg.addEventListener('mouseenter', () => this.mapLink?.previewEventHexes(event));

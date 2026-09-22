@@ -191,6 +191,32 @@ export class Replay {
     return this.civs[civId].name;
   }
 
+  // Capital plot key per civilization, built on first request from the
+  // events, where each civilization's first founded city is its capital
+  private capitalKeys: Map<number, string> | null = null;
+
+  /**
+   * Get the "x,y" plot key of a civilization's capital city, the first city
+   * it founded, or null when the events hold no founding for that civ
+   */
+  public getCapitalKey(civId?: number): string | null {
+    if (civId === undefined || civId < 0) {
+      return null;
+    }
+    if (!this.capitalKeys) {
+      this.capitalKeys = new Map();
+      for (const event of this.events) {
+        if (event.type !== EventType.CityFounded) continue;
+        if (event.civId === undefined || event.civId < 0) continue;
+        if (event.x === undefined || event.y === undefined) continue;
+        if (!this.capitalKeys.has(event.civId)) {
+          this.capitalKeys.set(event.civId, `${event.x},${event.y}`);
+        }
+      }
+    }
+    return this.capitalKeys.get(civId) ?? null;
+  }
+
   /**
    * Map a raw player slot from snapshot data to a civilization index
    * @returns The civilization index, or -1 when no civilization uses the slot

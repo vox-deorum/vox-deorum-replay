@@ -203,8 +203,10 @@
       'Wellington', 'Winchester', 'Wittenberg', 'Yamatai', 'Yerevan',
       'Zanzibar', 'Zurich', 'Zuunmod',
   ];
-  // One neutral gray for every city-state marker, border, and territory tint.
-  const cityStateColor = [136, 136, 136];
+  // One neutral color for every city-state marker, border, and territory tint.
+  // A cool silver-blue keeps it apart from the gray mountain art it used to
+  // vanish into, while still reading as the unaligned minor powers.
+  const cityStateColor = [150, 165, 190];
   for (const name of cityStateNames) {
       CivColors[name] = { city: cityStateColor, territory: cityStateColor };
   }
@@ -380,16 +382,39 @@
       return `${tile.x},${tile.y}`;
   }
   /**
+   * True when a coordinate is a real plot. The save files mark locationless
+   * events (strategies and so on) with a sentinel tile at -1,-1, which is no
+   * place on the map.
+   */
+  function isRealPlot(x, y) {
+      return x >= 0 && y >= 0;
+  }
+  /**
    * The distinct plot keys an event points at, gathered from its tile list and
-   * its single-tile coordinate, whichever the event carries.
+   * its single-tile coordinate, whichever the event carries, ignoring the
+   * -1,-1 sentinel the game writes for events that happen nowhere.
    */
   function eventHexKeys(event) {
       const keys = new Set();
-      for (const tile of event.tiles || [])
-          keys.add(tileKey(tile));
-      if (event.x !== undefined && event.y !== undefined)
+      for (const tile of event.tiles || []) {
+          if (isRealPlot(tile.x, tile.y))
+              keys.add(tileKey(tile));
+      }
+      if (event.x !== undefined && event.y !== undefined && isRealPlot(event.x, event.y)) {
           keys.add(`${event.x},${event.y}`);
+      }
       return Array.from(keys);
+  }
+  /**
+   * The plots an event should point at on the map: the plots it names, or,
+   * when it carries no coordinates at all (diplomacy chatter, religion
+   * notices and so on), the capital plot of the civilization it belongs to.
+   */
+  function eventFocusHexKeys(event, capitalKey) {
+      const keys = eventHexKeys(event);
+      if (keys.length || !capitalKey)
+          return keys;
+      return [capitalKey];
   }
   /**
    * Return the center of a pointy hex in the flat shared map coordinate system.
@@ -1692,20 +1717,28 @@
           (_a = this.renderer) === null || _a === void 0 ? void 0 : _a.setSelectedHex(hexKeys[0] || null);
       }
       /**
+       * The plots an event should point at: its own coordinates when it has
+       * them, otherwise the capital of the civilization it belongs to.
+       */
+      eventFocusKeys(event) {
+          var _a, _b;
+          const capitalKey = (_b = (_a = this.session) === null || _a === void 0 ? void 0 : _a.replay.getCapitalKey(event.civId)) !== null && _b !== void 0 ? _b : null;
+          return eventFocusHexKeys(event, capitalKey);
+      }
+      /**
        * Outline the plots touched by a single event, replacing any preview. This
        * backs the event log hover so a player can see where something happened.
        */
       previewEventHexes(event) {
           var _a;
-          (_a = this.renderer) === null || _a === void 0 ? void 0 : _a.setPreviewHexes(event ? eventHexKeys(event) : []);
+          (_a = this.renderer) === null || _a === void 0 ? void 0 : _a.setPreviewHexes(event ? this.eventFocusKeys(event) : []);
       }
       /**
-       * Center the map on the plots touched by an event. A single plot is framed
-       * at a legible zoom, raising the level only when the camera is too far out
-       * to make the cell out. A spread of plots fits its bounds instead.
+       * Center the map on the first plot touched by an event at a legible zoom.
+       * Raise the level only when the camera is too far out to make the plot out.
        */
       focusEventHexes(event) {
-          const keys = eventHexKeys(event);
+          const keys = this.eventFocusKeys(event);
           if (!this.renderer || !this.session || keys.length === 0)
               return;
           const tiles = this.session.replay.tiles;
@@ -1719,13 +1752,8 @@
               .filter((point) => point !== null);
           if (centers.length === 0)
               return;
-          if (centers.length > 1) {
-              const bounds = L.latLngBounds(centers.map(point => L.latLng(point.y, point.x)));
-              this.map.fitBounds(bounds, { padding: [60, 60], maxZoom: 5, animate: true });
-              return;
-          }
           const [center] = centers;
-          const legible = this.renderer.zoomForHexPixels(16);
+          const legible = this.renderer.zoomForHexPixels(48);
           const zoom = Math.max(this.map.getZoom(), legible);
           this.map.setView(L.latLng(center.y, center.x), zoom, { animate: true });
       }
@@ -2701,8 +2729,9 @@
           if (!this.types.has(event.type)) {
               msg.classList.add('hidden');
           }
-          // Events that point at map plots become clickable and preview on hover
-          if (this.mapLink && eventHexKeys(event).length > 0) {
+          // Events that point at map plots become clickable and preview on hover.
+          // One without coordinates still lands on its civilization's capital
+          if (this.mapLink && eventFocusHexKeys(event, this.replay.getCapitalKey(event.civId)).length > 0) {
               msg.classList.add('locatable');
               msg.title = 'Show this event on the map';
               msg.addEventListener('mouseenter', () => { var _a; return (_a = this.mapLink) === null || _a === void 0 ? void 0 : _a.previewEventHexes(event); });
@@ -5622,6 +5651,9 @@
           this.victory = null;
           /** Dataset quality per civilization, aligned with the civs list */
           this.datasetDiagnostics = [];
+          // Capital plot key per civilization, built on first request from the
+          // events, where each civilization's first founded city is its capital
+          this.capitalKeys = null;
       }
       /**
        * Load replay data from a binary file
@@ -5720,6 +5752,31 @@
               return null;
           }
           return this.civs[civId].name;
+      }
+      /**
+       * Get the "x,y" plot key of a civilization's capital city, the first city
+       * it founded, or null when the events hold no founding for that civ
+       */
+      getCapitalKey(civId) {
+          var _a;
+          if (civId === undefined || civId < 0) {
+              return null;
+          }
+          if (!this.capitalKeys) {
+              this.capitalKeys = new Map();
+              for (const event of this.events) {
+                  if (event.type !== EventType.CityFounded)
+                      continue;
+                  if (event.civId === undefined || event.civId < 0)
+                      continue;
+                  if (event.x === undefined || event.y === undefined)
+                      continue;
+                  if (!this.capitalKeys.has(event.civId)) {
+                      this.capitalKeys.set(event.civId, `${event.x},${event.y}`);
+                  }
+              }
+          }
+          return (_a = this.capitalKeys.get(civId)) !== null && _a !== void 0 ? _a : null;
       }
       /**
        * Map a raw player slot from snapshot data to a civilization index

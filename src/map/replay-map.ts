@@ -8,7 +8,7 @@ import { GameEvent, Tile, TurnState } from '../replay/types';
 import { GameSession } from '../replay/session';
 import { CivAnnotations } from '../ui/annotations';
 import { TileTooltip } from '../ui/tile-tooltip';
-import { eventHexKeys, hexCenter, hexRadius, hexWidth } from './hex-geometry';
+import { eventFocusHexKeys, hexCenter, hexRadius, hexWidth } from './hex-geometry';
 import { RendererLayer, ViewportLayer } from './viewport-layer';
 
 declare const L: any;
@@ -169,20 +169,28 @@ export class ReplayMap {
 	}
 
 	/**
+	 * The plots an event should point at: its own coordinates when it has
+	 * them, otherwise the capital of the civilization it belongs to.
+	 */
+	private eventFocusKeys(event: GameEvent): string[] {
+		const capitalKey = this.session?.replay.getCapitalKey(event.civId) ?? null;
+		return eventFocusHexKeys(event, capitalKey);
+	}
+
+	/**
 	 * Outline the plots touched by a single event, replacing any preview. This
 	 * backs the event log hover so a player can see where something happened.
 	 */
 	previewEventHexes(event: GameEvent | null): void {
-		this.renderer?.setPreviewHexes(event ? eventHexKeys(event) : []);
+		this.renderer?.setPreviewHexes(event ? this.eventFocusKeys(event) : []);
 	}
 
 	/**
-	 * Center the map on the plots touched by an event. A single plot is framed
-	 * at a legible zoom, raising the level only when the camera is too far out
-	 * to make the cell out. A spread of plots fits its bounds instead.
+	 * Center the map on the first plot touched by an event at a legible zoom.
+	 * Raise the level only when the camera is too far out to make the plot out.
 	 */
 	focusEventHexes(event: GameEvent): void {
-		const keys = eventHexKeys(event);
+		const keys = this.eventFocusKeys(event);
 		if (!this.renderer || !this.session || keys.length === 0) return;
 		const tiles = this.session.replay.tiles;
 		const centers = keys
@@ -194,14 +202,8 @@ export class ReplayMap {
 			.filter((point): point is { x: number; y: number } => point !== null);
 		if (centers.length === 0) return;
 
-		if (centers.length > 1) {
-			const bounds = L.latLngBounds(centers.map(point => L.latLng(point.y, point.x)));
-			this.map.fitBounds(bounds, { padding: [0, 0], maxZoom: 5, animate: true });
-			return;
-		}
-
 		const [center] = centers;
-		const legible = this.renderer.zoomForHexPixels(16);
+		const legible = this.renderer.zoomForHexPixels(48);
 		const zoom = Math.max(this.map.getZoom(), legible);
 		this.map.setView(L.latLng(center.y, center.x), zoom, { animate: true });
 	}
